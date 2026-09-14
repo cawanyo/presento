@@ -1,7 +1,8 @@
 import React from 'react';
 import { EyeOff, Users } from 'lucide-react';
 import type { Question, Response as ResponseType, ChartLayout } from '@/lib/types';
-import { parseQuestionConfig } from '@/lib/types';
+import { parseQuestionConfig, getEffectiveQuestionType } from '@/lib/types';
+import { TextSlideView } from './TextSlideView';
 import { MultipleChoiceBars } from './MultipleChoiceBars';
 import { MultipleChoiceHorizontal } from './MultipleChoiceHorizontal';
 import { MultipleChoiceDonut } from './MultipleChoiceDonut';
@@ -30,7 +31,19 @@ export function QuestionVisualization({
   revealedQuiz = false,
   hideResults = false,
 }: Props) {
-  const { choices } = parseQuestionConfig(question);
+  const effectiveType = getEffectiveQuestionType(question);
+  const { choices, textBlocks } = parseQuestionConfig(question);
+
+  // If text slide
+  if (effectiveType === 'text_slide') {
+    return (
+      <TextSlideView
+        title={question.title}
+        textBlocks={textBlocks}
+        layout={activeLayout}
+      />
+    );
+  }
 
   // If presenter chose to hide results
   if (hideResults) {
@@ -52,7 +65,7 @@ export function QuestionVisualization({
   }
 
   // 1. Multiple Choice & Quiz
-  if (question.type === 'multiple_choice' || question.type === 'quiz') {
+  if (effectiveType === 'multiple_choice' || effectiveType === 'quiz') {
     const isQuiz = question.type === 'quiz';
     const correctOpt = question.correct_option;
 

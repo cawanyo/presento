@@ -1,11 +1,22 @@
 export type PresentationStatus = 'draft' | 'active' | 'ended';
 
 export type QuestionType =
+  | 'text_slide'
   | 'multiple_choice'
   | 'word_cloud'
   | 'open_text'
   | 'rating'
   | 'quiz';
+
+export type TextBlockType = 'title' | 'subtitle' | 'paragraph' | 'bullet' | 'quote';
+export type TextAlign = 'left' | 'center' | 'right';
+
+export interface TextBlock {
+  id: string;
+  type: TextBlockType;
+  text: string;
+  align?: TextAlign;
+}
 
 export type ChartLayout =
   | 'bars'             // Colonnes verticales (default for multiple_choice)
@@ -19,7 +30,10 @@ export type ChartLayout =
   | 'gauge'            // Jauge circulaire speedometer
   | 'wall'             // Mur de post-its
   | 'spotlight'        // Réponse par réponse en grand
-  | 'list';            // Liste chronologique épurée
+  | 'list'             // Liste chronologique épurée
+  | 'slide_centered'   // Diapositive texte centrée
+  | 'slide_left'       // Diapositive texte alignée à gauche
+  | 'slide_cards';     // Diapositive avec blocs en cartes
 
 export type ThemeId = 'midnight' | 'sunset' | 'emerald' | 'cyberpunk' | 'minimal';
 
@@ -102,15 +116,30 @@ export interface QuestionConfig {
   choices: string[];
   layout: ChartLayout;
   allowMultiple: boolean;
+  textBlocks: TextBlock[];
+}
+
+export function getEffectiveQuestionType(question: Question | null): QuestionType {
+  if (!question) return 'multiple_choice';
+  if (question.type === 'text_slide') return 'text_slide';
+  if (question.type === 'open_text') {
+    const raw = question.options as any;
+    if (raw && (raw.is_slide || raw.kind === 'text_slide' || String(raw.layout).startsWith('slide_'))) {
+      return 'text_slide';
+    }
+  }
+  return question.type;
 }
 
 export function parseQuestionConfig(question: Question | null): QuestionConfig {
-  if (!question) return { choices: [], layout: 'bars', allowMultiple: false };
+  if (!question) return { choices: [], layout: 'bars', allowMultiple: false, textBlocks: [] };
   const raw = question.options as any;
 
   let choices: string[] = [];
-  let layout: ChartLayout = getDefaultLayout(question.type);
+  const effectiveType = getEffectiveQuestionType(question);
+  let layout: ChartLayout = getDefaultLayout(effectiveType);
   let allowMultiple = false;
+  let textBlocks: TextBlock[] = [];
 
   if (Array.isArray(raw)) {
     choices = raw;
@@ -119,13 +148,23 @@ export function parseQuestionConfig(question: Question | null): QuestionConfig {
     if (raw.layout) layout = raw.layout as ChartLayout;
     if (typeof raw.allowMultiple === 'boolean') allowMultiple = raw.allowMultiple;
     if (typeof raw.allow_multiple === 'boolean') allowMultiple = raw.allow_multiple;
+    if (Array.isArray(raw.textBlocks)) textBlocks = raw.textBlocks;
   }
 
-  return { choices, layout, allowMultiple };
+  if (effectiveType === 'text_slide' && textBlocks.length === 0) {
+    textBlocks = [
+      { id: 'tb_1', type: 'subtitle', text: 'Ordre du jour & points clés', align: 'center' },
+      { id: 'tb_2', type: 'paragraph', text: 'Bienvenue à cette session interactive. Découvrez les informations présentées ci-dessous.', align: 'center' },
+    ];
+  }
+
+  return { choices, layout, allowMultiple, textBlocks };
 }
 
 export function getDefaultLayout(type: QuestionType): ChartLayout {
   switch (type) {
+    case 'text_slide':
+      return 'slide_centered';
     case 'multiple_choice':
       return 'bars';
     case 'quiz':
@@ -183,6 +222,7 @@ export interface QuestionResult {
 }
 
 export const QUESTION_TYPES: { value: QuestionType; label: string; icon: string; description: string }[] = [
+  { value: 'text_slide', label: 'Page de texte', icon: 'file-text', description: 'Diapositive de contenu et blocs de texte libres' },
   { value: 'multiple_choice', label: 'Choix multiple', icon: 'list', description: 'Colonnes, barres, donut ou cartes' },
   { value: 'quiz', label: 'Quiz avec réponse', icon: 'help-circle', description: 'Révélation suspense et confettis' },
   { value: 'word_cloud', label: 'Nuage de mots', icon: 'cloud', description: 'Nuage dynamique, bulles ou classement' },
@@ -191,6 +231,11 @@ export const QUESTION_TYPES: { value: QuestionType; label: string; icon: string;
 ];
 
 export const LAYOUT_OPTIONS: Record<QuestionType, { id: ChartLayout; label: string; icon: string }[]> = {
+  text_slide: [
+    { id: 'slide_centered', label: 'Centré', icon: 'AlignLeft' },
+    { id: 'slide_left', label: 'Éditorial', icon: 'AlignLeft' },
+    { id: 'slide_cards', label: 'Cartes', icon: 'LayoutGrid' },
+  ],
   multiple_choice: [
     { id: 'bars', label: 'Colonnes', icon: 'BarChart3' },
     { id: 'horizontal_bars', label: 'Barres', icon: 'AlignLeft' },

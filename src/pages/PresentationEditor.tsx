@@ -29,6 +29,11 @@ import {
   Share2,
   QrCode,
   CheckSquare,
+  FileText,
+  AlignCenter,
+  AlignRight,
+  Type,
+  Quote,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
@@ -39,6 +44,9 @@ import type {
   ChartLayout,
   Response as ResponseType,
   ThemeId,
+  TextBlock,
+  TextBlockType,
+  TextAlign,
 } from '@/lib/types';
 import {
   QUESTION_TYPES,
@@ -46,6 +54,7 @@ import {
   THEMES,
   parseQuestionConfig,
   getDefaultLayout,
+  getEffectiveQuestionType,
 } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -59,6 +68,7 @@ interface Props {
 }
 
 const typeIcons: Record<string, typeof ListChecks> = {
+  text_slide: FileText,
   multiple_choice: ListChecks,
   quiz: HelpCircle,
   word_cloud: Cloud,
@@ -67,6 +77,9 @@ const typeIcons: Record<string, typeof ListChecks> = {
 };
 
 const layoutIcons: Record<string, typeof BarChart3> = {
+  slide_centered: AlignCenter,
+  slide_left: AlignLeft,
+  slide_cards: LayoutGrid,
   bars: BarChart3,
   horizontal_bars: AlignLeft,
   donut: PieChart,
@@ -85,6 +98,7 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
 // Helper to generate realistic mock responses for instant live preview
 function generateMockResponses(question: Question): ResponseType[] {
+  if (question.type === 'text_slide') return [];
   const { choices } = parseQuestionConfig(question);
 
   if (question.type === 'multiple_choice' || question.type === 'quiz') {
@@ -198,8 +212,12 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
       .order('position', { ascending: true });
 
     if (qs) {
-      setQuestions(qs);
-      if (qs.length > 0 && activeIdx >= qs.length) {
+      const normalizedQs = qs.map((q) => ({
+        ...q,
+        type: getEffectiveQuestionType(q),
+      }));
+      setQuestions(normalizedQs);
+      if (normalizedQs.length > 0 && activeIdx >= normalizedQs.length) {
         setActiveIdx(0);
       }
     }
@@ -216,12 +234,18 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(async () => {
+      const isSlide = updatedQuestion.type === 'text_slide';
+      const dbType = isSlide ? 'open_text' : updatedQuestion.type;
+      const dbOptions = isSlide
+        ? { ...(updatedQuestion.options || {}), is_slide: true, kind: 'text_slide' }
+        : updatedQuestion.options;
+
       await supabase
         .from('questions')
         .update({
           title: updatedQuestion.title,
-          type: updatedQuestion.type,
-          options: updatedQuestion.options,
+          type: dbType,
+          options: dbOptions,
           correct_option: updatedQuestion.correct_option,
         })
         .eq('id', updatedQuestion.id);
@@ -250,22 +274,38 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     queueQuestionSave(updated);
   };
 
-  const handleAddQuestion = async () => {
+  const handleAddQuestion = async (typeToAdd: QuestionType = 'multiple_choice') => {
     setSaveStatus('saving');
-    const defaultType: QuestionType = 'multiple_choice';
+    const defaultType = typeToAdd;
     const defaultLayout = getDefaultLayout(defaultType);
+    const isSlide = defaultType === 'text_slide';
+
+    const dbType = isSlide ? 'open_text' : defaultType;
+    const initialOptions = isSlide
+      ? {
+          is_slide: true,
+          kind: 'text_slide',
+          choices: [],
+          layout: defaultLayout,
+          allowMultiple: false,
+          textBlocks: [
+            { id: `tb_${Date.now()}_1`, type: 'subtitle' as const, text: 'Points clés & informations', align: 'center' as const },
+            { id: `tb_${Date.now()}_2`, type: 'paragraph' as const, text: 'Partagez vos idées ou vos réflexions avec votre public.', align: 'center' as const },
+          ],
+        }
+      : {
+          choices: ['Option 1', 'Option 2'],
+          layout: defaultLayout,
+          allowMultiple: false,
+        };
 
     const { data, error } = await supabase
       .from('questions')
       .insert({
         presentation_id: presentationId,
-        type: defaultType,
-        title: 'Nouvelle question',
-        options: {
-          choices: ['Option 1', 'Option 2'],
-          layout: defaultLayout,
-          allowMultiple: false,
-        },
+        type: dbType,
+        title: isSlide ? 'Nouvelle diapositive' : 'Nouvelle question',
+        options: initialOptions,
         correct_option: null,
         position: questions.length,
       })
@@ -273,7 +313,8 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
       .single();
 
     if (data && !error) {
-      const newQs = [...questions, data];
+      const newQ: Question = { ...data, type: defaultType };
+      const newQs = [...questions, newQ];
       setQuestions(newQs);
       setActiveIdx(newQs.length - 1);
       setSaveStatus('saved');
@@ -434,13 +475,26 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                 Diapositives ({questions.length})
               </span>
             </div>
-            <Button
-              size="sm"
-              onClick={handleAddQuestion}
-              className="text-xs py-1 px-2.5 h-8 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 flex-shrink-0 font-bold"
-            >
-              <Plus size={14} /> Question
-            </Button>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => handleAddQuestion('text_slide')}
+                className="inline-flex items-center gap-1 text-xs py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold transition-colors cursor-pointer"
+                title="Ajouter une page de texte libre"
+              >
+                <FileText size={13} className="text-teal-600" />
+                <span>+ Page texte</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddQuestion('multiple_choice')}
+                className="inline-flex items-center gap-1 text-xs py-1.5 px-2.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 font-bold transition-colors cursor-pointer"
+                title="Ajouter une question interactive"
+              >
+                <Plus size={13} />
+                <span>+ Question</span>
+              </button>
+            </div>
           </div>
 
           {/* Horizontal Slide Thumbnails */}
@@ -502,12 +556,12 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
               {/* Question Header & Delete */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <span className="text-xs font-bold uppercase tracking-wider text-teal-700">
-                  Édition de la question #{activeIdx + 1}
+                  {activeQuestion.type === 'text_slide' ? 'Diapositive de texte' : `Question #${activeIdx + 1}`}
                 </span>
                 <button
                   onClick={() => handleDeleteQuestion(activeIdx)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                  title="Supprimer cette question"
+                  title="Supprimer cette diapositive"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -516,7 +570,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
               {/* 1. Question Type */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  1. Type d'interaction
+                  1. Type de diapositive
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {QUESTION_TYPES.map((qt) => {
@@ -530,12 +584,23 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                         onClick={() => {
                           const newLayout = getDefaultLayout(qt.value);
                           const currentCfg = parseQuestionConfig(activeQuestion);
+                          const defaultBlocks =
+                            qt.value === 'text_slide' && currentCfg.textBlocks.length === 0
+                              ? [
+                                  { id: `tb_${Date.now()}_1`, type: 'subtitle' as const, text: 'Points clés & informations', align: 'center' as const },
+                                  { id: `tb_${Date.now()}_2`, type: 'paragraph' as const, text: 'Partagez vos idées ou vos réflexions avec votre public.', align: 'center' as const },
+                                ]
+                              : currentCfg.textBlocks;
+
                           handleUpdateActiveQuestion({
                             type: qt.value,
                             options: {
                               choices: currentCfg.choices,
                               layout: newLayout,
                               allowMultiple: currentCfg.allowMultiple,
+                              textBlocks: defaultBlocks,
+                              is_slide: qt.value === 'text_slide',
+                              kind: qt.value === 'text_slide' ? 'text_slide' : undefined,
                             },
                           });
                         }}
@@ -557,7 +622,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
               {LAYOUT_OPTIONS[activeQuestion.type] && (
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                    2. Style de présentation visuelle (comme sur Menti)
+                    2. Disposition visuelle (style Menti)
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {LAYOUT_OPTIONS[activeQuestion.type].map((lo) => {
@@ -572,9 +637,8 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                           onClick={() => {
                             handleUpdateActiveQuestion({
                               options: {
-                                choices: cfg.choices,
+                                ...cfg,
                                 layout: lo.id,
-                                allowMultiple: cfg.allowMultiple,
                               },
                             });
                           }}
@@ -593,18 +657,260 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                 </div>
               )}
 
-              {/* 3. Question Title */}
+              {/* 3. Question / Slide Title */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  3. Intitulé de la question
+                  {activeQuestion.type === 'text_slide' ? '3. Titre principal de la diapositive' : '3. Intitulé de la question'}
                 </label>
                 <input
                   value={activeQuestion.title}
                   onChange={(e) => handleUpdateActiveQuestion({ title: e.target.value })}
-                  placeholder="Ex: Quel sujet souhaitez-vous approfondir ?"
+                  placeholder={activeQuestion.type === 'text_slide' ? 'Ex: Introduction au sujet du jour' : 'Ex: Quel sujet souhaitez-vous approfondir ?'}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                 />
               </div>
+
+              {/* 4. Text Slide Blocks Manager (Textes modulables et déplaçables) */}
+              {activeQuestion.type === 'text_slide' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      4. Blocs de texte modulables
+                    </label>
+                    <span className="text-[11px] text-teal-700 font-bold bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                      {parseQuestionConfig(activeQuestion).textBlocks.length} texte(s)
+                    </span>
+                  </div>
+
+                  {/* Text Blocks List */}
+                  <div className="space-y-3">
+                    {parseQuestionConfig(activeQuestion).textBlocks.map((block, i) => {
+                      const cfg = parseQuestionConfig(activeQuestion);
+                      const canMoveUp = i > 0;
+                      const canMoveDown = i < cfg.textBlocks.length - 1;
+
+                      return (
+                        <div
+                          key={block.id}
+                          className="rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-xs hover:border-slate-300 transition-all space-y-2.5"
+                        >
+                          {/* Block Header: Type, Move & Delete */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              {/* Block Type Picker */}
+                              <select
+                                value={block.type}
+                                onChange={(e) => {
+                                  const newBlocks = [...cfg.textBlocks];
+                                  newBlocks[i] = { ...block, type: e.target.value as TextBlockType };
+                                  handleUpdateActiveQuestion({
+                                    options: { ...cfg, textBlocks: newBlocks },
+                                  });
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-xs font-bold text-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer transition-colors"
+                              >
+                                <option value="title">Grand Titre</option>
+                                <option value="subtitle">Sous-titre</option>
+                                <option value="paragraph">Paragraphe</option>
+                                <option value="bullet">Point clé / Puce</option>
+                                <option value="quote">Citation</option>
+                              </select>
+
+                              {/* Alignment Toggle */}
+                              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newBlocks = [...cfg.textBlocks];
+                                    newBlocks[i] = { ...block, align: 'left' };
+                                    handleUpdateActiveQuestion({
+                                      options: { ...cfg, textBlocks: newBlocks },
+                                    });
+                                  }}
+                                  className={`p-1 rounded ${
+                                    (block.align || 'left') === 'left'
+                                      ? 'bg-white text-teal-600 shadow-xs font-bold'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                  title="Aligner à gauche"
+                                >
+                                  <AlignLeft size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newBlocks = [...cfg.textBlocks];
+                                    newBlocks[i] = { ...block, align: 'center' };
+                                    handleUpdateActiveQuestion({
+                                      options: { ...cfg, textBlocks: newBlocks },
+                                    });
+                                  }}
+                                  className={`p-1 rounded ${
+                                    block.align === 'center'
+                                      ? 'bg-white text-teal-600 shadow-xs font-bold'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                  title="Centrer"
+                                >
+                                  <AlignCenter size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newBlocks = [...cfg.textBlocks];
+                                    newBlocks[i] = { ...block, align: 'right' };
+                                    handleUpdateActiveQuestion({
+                                      options: { ...cfg, textBlocks: newBlocks },
+                                    });
+                                  }}
+                                  className={`p-1 rounded ${
+                                    block.align === 'right'
+                                      ? 'bg-white text-teal-600 shadow-xs font-bold'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                  title="Aligner à droite"
+                                >
+                                  <AlignRight size={13} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Move Buttons (Monter / Descendre) & Delete */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={!canMoveUp}
+                                onClick={() => {
+                                  const newBlocks = [...cfg.textBlocks];
+                                  const temp = newBlocks[i - 1];
+                                  newBlocks[i - 1] = newBlocks[i];
+                                  newBlocks[i] = temp;
+                                  handleUpdateActiveQuestion({
+                                    options: { ...cfg, textBlocks: newBlocks },
+                                  });
+                                }}
+                                className="p-1 rounded-md text-slate-500 hover:text-teal-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                                title="Monter ce texte"
+                              >
+                                <ChevronUp size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canMoveDown}
+                                onClick={() => {
+                                  const newBlocks = [...cfg.textBlocks];
+                                  const temp = newBlocks[i + 1];
+                                  newBlocks[i + 1] = newBlocks[i];
+                                  newBlocks[i] = temp;
+                                  handleUpdateActiveQuestion({
+                                    options: { ...cfg, textBlocks: newBlocks },
+                                  });
+                                }}
+                                className="p-1 rounded-md text-slate-500 hover:text-teal-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+                                title="Descendre ce texte"
+                              >
+                                <ChevronDown size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newBlocks = cfg.textBlocks.filter((_, idx) => idx !== i);
+                                  handleUpdateActiveQuestion({
+                                    options: { ...cfg, textBlocks: newBlocks },
+                                  });
+                                }}
+                                className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors ml-1"
+                                title="Supprimer ce texte"
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Block Text Content Input/Textarea */}
+                          <textarea
+                            value={block.text}
+                            onChange={(e) => {
+                              const newBlocks = [...cfg.textBlocks];
+                              newBlocks[i] = { ...block, text: e.target.value };
+                              handleUpdateActiveQuestion({
+                                options: { ...cfg, textBlocks: newBlocks },
+                              });
+                            }}
+                            rows={block.type === 'paragraph' ? 3 : block.type === 'quote' ? 2 : 1}
+                            placeholder="Saisissez votre texte ici..."
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-teal-500 transition-all resize-none"
+                          />
+                        </div>
+                      );
+                    })}
+
+                    {/* Quick Add Buttons for Text Blocks */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const cfg = parseQuestionConfig(activeQuestion);
+                          const newBlock: TextBlock = {
+                            id: `tb_${Date.now()}`,
+                            type: 'paragraph',
+                            text: 'Nouveau paragraphe',
+                            align: 'left',
+                          };
+                          handleUpdateActiveQuestion({
+                            options: { ...cfg, textBlocks: [...cfg.textBlocks, newBlock] },
+                          });
+                        }}
+                        className="flex-1 text-xs py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 font-bold"
+                      >
+                        <Plus size={14} /> Ajouter un texte
+                      </Button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cfg = parseQuestionConfig(activeQuestion);
+                          const newBlock: TextBlock = {
+                            id: `tb_${Date.now()}`,
+                            type: 'bullet',
+                            text: 'Nouveau point clé',
+                            align: 'left',
+                          };
+                          handleUpdateActiveQuestion({
+                            options: { ...cfg, textBlocks: [...cfg.textBlocks, newBlock] },
+                          });
+                        }}
+                        className="text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                        title="Ajouter une puce"
+                      >
+                        + Puce
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cfg = parseQuestionConfig(activeQuestion);
+                          const newBlock: TextBlock = {
+                            id: `tb_${Date.now()}`,
+                            type: 'quote',
+                            text: 'Citation ou message percutant...',
+                            align: 'left',
+                          };
+                          handleUpdateActiveQuestion({
+                            options: { ...cfg, textBlocks: [...cfg.textBlocks, newBlock] },
+                          });
+                        }}
+                        className="text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+                        title="Ajouter une citation"
+                      >
+                        + Citation
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 4. Options List (For Multiple Choice & Quiz) */}
               {['multiple_choice', 'quiz'].includes(activeQuestion.type) && (
@@ -844,7 +1150,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
               <ListChecks size={40} className="mb-3 opacity-40 text-teal-600" />
               <p className="text-sm font-bold text-slate-700">Aucune question sélectionnée</p>
               <p className="text-xs text-slate-400 mt-1 mb-4">Créez votre première diapositive interactive</p>
-              <Button size="sm" onClick={handleAddQuestion} className="bg-teal-600 hover:bg-teal-500 text-white font-bold">
+              <Button size="sm" onClick={() => handleAddQuestion()} className="bg-teal-600 hover:bg-teal-500 text-white font-bold">
                 <Plus size={15} /> Ajouter une question
               </Button>
             </div>
@@ -973,7 +1279,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
 
                   <div className="flex items-center gap-2 pr-28 sm:pr-32">
                     <span className="text-[11px] font-mono font-bold text-slate-500 bg-black/5 px-2.5 py-0.5 rounded-full">
-                      Question {activeIdx + 1} / {questions.length}
+                      {activeQuestion.type === 'text_slide' ? 'Slide' : 'Question'} {activeIdx + 1} / {questions.length}
                     </span>
                   </div>
                 </div>
@@ -987,12 +1293,14 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                       </span>
                     </div>
                   )}
-                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 text-center leading-tight mb-3 drop-shadow-xs max-w-2xl">
-                    {activeQuestion.title || 'Votre question ici...'}
-                  </h2>
+                  {activeQuestion.type !== 'text_slide' && (
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 text-center leading-tight mb-3 drop-shadow-xs max-w-2xl">
+                      {activeQuestion.title || 'Votre question ici...'}
+                    </h2>
+                  )}
 
                   {/* Render the Visualization with mock or real responses */}
-                  <div className="w-full flex-1 flex items-center justify-center max-h-[340px]">
+                  <div className="w-full flex-1 flex items-center justify-center max-h-[360px]">
                     <QuestionVisualization
                       question={activeQuestion}
                       responses={useMockData ? generateMockResponses(activeQuestion) : []}

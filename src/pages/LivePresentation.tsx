@@ -9,6 +9,7 @@ import {
   Share2,
   BarChart3,
   AlignLeft,
+  AlignCenter,
   PieChart,
   LayoutGrid,
   Cloud,
@@ -43,6 +44,7 @@ import {
   THEMES,
   LAYOUT_OPTIONS,
   parseQuestionConfig,
+  getEffectiveQuestionType,
 } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -56,6 +58,7 @@ interface Props {
 const LAYOUT_ICONS: Record<string, LucideIcon> = {
   BarChart3,
   AlignLeft,
+  AlignCenter,
   PieChart,
   LayoutGrid,
   Cloud,
@@ -84,6 +87,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showCornerQR, setShowCornerQR] = useState(true); // Right-side QR switch
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -106,12 +110,16 @@ export function LivePresentation({ presentationId, onBack }: Props) {
         .order('position', { ascending: true });
 
       if (qs && qs.length > 0) {
-        setQuestions(qs);
+        const normalizedQs = qs.map((q) => ({
+          ...q,
+          type: getEffectiveQuestionType(q),
+        }));
+        setQuestions(normalizedQs);
         if (pres.current_question_id) {
-          const ci = qs.findIndex((q) => q.id === pres.current_question_id);
+          const ci = normalizedQs.findIndex((q) => q.id === pres.current_question_id);
           const initialIndex = ci >= 0 ? ci : 0;
           setCurrentIdx(initialIndex);
-          const cfg = parseQuestionConfig(qs[initialIndex]);
+          const cfg = parseQuestionConfig(normalizedQs[initialIndex]);
           setActiveLayout(cfg.layout);
         } else {
           setCurrentIdx(-1);
@@ -129,6 +137,50 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  // Handle browser back button (comeback) & page unload
+  useEffect(() => {
+    // Push dummy history entry so back button triggers popstate without leaving
+    window.history.pushState({ inLivePresentation: true }, '');
+
+    const handlePopState = () => {
+      // User pressed back button in browser
+      window.history.pushState({ inLivePresentation: true }, '');
+      setShowExitConfirm(true);
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
+  // Track fullscreen state change
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  const handleConfirmExit = async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {}
+    }
+    setShowExitConfirm(false);
+    onBack();
+  };
 
   // Realtime subscription for votes and presentation events
   useEffect(() => {
@@ -329,7 +381,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={onBack}
+              onClick={() => setShowExitConfirm(true)}
               className={`-ml-2 ${
                 isWhiteTheme
                   ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -568,10 +620,15 @@ export function LivePresentation({ presentationId, onBack }: Props) {
             {/* Question Header & Type badge */}
             <div className="mb-6 text-center max-w-3xl">
               <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200/80 px-3.5 py-1 rounded-full text-xs font-bold text-teal-800 mb-3 shadow-xs">
-                <span>Question {currentIdx + 1} sur {questions.length}</span>
+                <span>{currentQuestion.type === 'text_slide' ? 'Slide' : 'Question'} {currentIdx + 1} sur {questions.length}</span>
                 {currentQuestion.type === 'quiz' && (
                   <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
                     Quiz
+                  </span>
+                )}
+                {currentQuestion.type === 'text_slide' && (
+                  <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                    Contenu
                   </span>
                 )}
                 {parseQuestionConfig(currentQuestion).allowMultiple && (
@@ -581,9 +638,11 @@ export function LivePresentation({ presentationId, onBack }: Props) {
                 )}
               </div>
 
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
-                {currentQuestion.title}
-              </h2>
+              {currentQuestion.type !== 'text_slide' && (
+                <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+                  {currentQuestion.title}
+                </h2>
+              )}
             </div>
 
             {/* Quick Switch Layout Toolbar (Menti Style) */}
@@ -780,6 +839,18 @@ export function LivePresentation({ presentationId, onBack }: Props) {
         message="Êtes-vous sûr de vouloir terminer la présentation ? Les participants verront l’écran de fin et les votes seront clos."
         confirmText="Terminer la session"
         cancelText="Continuer la présentation"
+        variant="warning"
+      />
+
+      {/* Exit Presentation Confirmation Modal (Browser comeback / Back button) */}
+      <ConfirmModal
+        open={showExitConfirm}
+        onClose={() => setShowExitConfirm(false)}
+        onConfirm={handleConfirmExit}
+        title="Quitter la présentation en cours ?"
+        message="Vous êtes actuellement en direct. Voulez-vous vraiment quitter la présentation ? Les participants connectés resteront en attente."
+        confirmText="Quitter la présentation"
+        cancelText="Continuer à présenter"
         variant="warning"
       />
     </div>

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Presentation, ArrowRight, CheckCircle2, Loader2, Users, Star, Check, Plus } from 'lucide-react';
+import { Presentation, ArrowRight, CheckCircle2, Loader2, Users, Star, Check, Plus, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Presentation as PresentationType, Question, QuestionType } from '@/lib/types';
-import { parseQuestionConfig, MENTI_COLORS } from '@/lib/types';
+import { parseQuestionConfig, getEffectiveQuestionType, MENTI_COLORS } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
@@ -67,7 +67,12 @@ export function ParticipantView({ joinCode, onExit }: Props) {
       .select('*')
       .eq('id', questionId)
       .maybeSingle();
-    if (data) setCurrentQuestion(data);
+    if (data) {
+      setCurrentQuestion({
+        ...data,
+        type: getEffectiveQuestionType(data),
+      });
+    }
   }, []);
 
   const handleJoin = async () => {
@@ -303,6 +308,74 @@ export function ParticipantView({ joinCode, onExit }: Props) {
             <span>En attente de la suite...</span>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Step 4b: Text Slide Reader View for Participants
+  if (currentQuestion.type === 'text_slide') {
+    const { textBlocks } = parseQuestionConfig(currentQuestion);
+
+    return (
+      <div className="min-h-screen bg-white text-slate-800 flex flex-col justify-between p-4 sm:p-6">
+        {/* Mini top bar */}
+        <header className="w-full max-w-lg mx-auto flex items-center justify-between pb-4 border-b border-slate-200">
+          <span className="text-xs font-bold text-slate-500 truncate max-w-[200px]">
+            {presentation?.title}
+          </span>
+          <span className="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
+            PIN {presentation?.join_code}
+          </span>
+        </header>
+
+        {/* Content reader card */}
+        <main className="w-full max-w-lg mx-auto my-auto py-6 animate-in fade-in">
+          <div className="text-center mb-6">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-teal-700 bg-teal-50 border border-teal-200 px-3 py-0.5 rounded-full mb-2">
+              <FileText size={13} /> Diapositive
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
+              {currentQuestion.title}
+            </h2>
+          </div>
+
+          <div className="rounded-3xl bg-slate-50/90 border-2 border-slate-200/90 p-5 sm:p-6 space-y-4 shadow-sm">
+            {textBlocks.map((block) => (
+              <div key={block.id}>
+                {block.type === 'title' && (
+                  <h3 className="text-xl font-black text-slate-900">{block.text}</h3>
+                )}
+                {block.type === 'subtitle' && (
+                  <h4 className="text-base font-bold text-teal-700">{block.text}</h4>
+                )}
+                {block.type === 'paragraph' && (
+                  <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{block.text}</p>
+                )}
+                {block.type === 'bullet' && (
+                  <div className="flex items-start gap-2.5 text-sm text-slate-800 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />
+                    <span>{block.text}</span>
+                  </div>
+                )}
+                {block.type === 'quote' && (
+                  <div className="border-l-4 border-teal-500 pl-3 py-1 italic text-slate-700 text-sm bg-white rounded-r-xl">
+                    <p>{block.text}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Follow presentation indicator */}
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-4 py-2.5 rounded-full shadow-xs">
+            <div className="w-2 h-2 rounded-full bg-teal-600 animate-ping" />
+            <span>Regardez l'écran principal pour suivre la présentation</span>
+          </div>
+        </main>
+
+        <footer className="text-center py-2 text-[11px] text-slate-400">
+          Présentation interactive animée avec Presento
+        </footer>
       </div>
     );
   }

@@ -34,6 +34,7 @@ import {
   AlignRight,
   Type,
   Quote,
+  GripVertical,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useQuery, useMutation } from 'convex/react';
@@ -191,6 +192,12 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
   const [questionToDelete, setQuestionToDelete] = useState<number | null>(null);
   const [deletingQuestion, setDeletingQuestion] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Drag and Drop reordering states
+  const [draggedQuestionIdx, setDraggedQuestionIdx] = useState<number | null>(null);
+  const [dragOverQuestionIdx, setDragOverQuestionIdx] = useState<number | null>(null);
+  const [draggedBlockIdx, setDraggedBlockIdx] = useState<number | null>(null);
+  const [dragOverBlockIdx, setDragOverBlockIdx] = useState<number | null>(null);
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -366,6 +373,52 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     }
   };
 
+  const handleDropQuestion = async (targetIdx: number) => {
+    if (draggedQuestionIdx === null || draggedQuestionIdx === targetIdx) {
+      setDraggedQuestionIdx(null);
+      setDragOverQuestionIdx(null);
+      return;
+    }
+
+    const fromIdx = draggedQuestionIdx;
+    const newQs = [...questions];
+    const [moved] = newQs.splice(fromIdx, 1);
+    newQs.splice(targetIdx, 0, moved);
+
+    setQuestions(newQs);
+    setActiveIdx(targetIdx);
+    setDraggedQuestionIdx(null);
+    setDragOverQuestionIdx(null);
+
+    try {
+      await updatePositionsMutation({
+        positions: newQs.map((q, i) => ({ id: q.id as any, position: i })),
+      });
+    } catch (err) {
+      console.error('Failed to update positions after drag:', err);
+    }
+  };
+
+  const handleDropTextBlock = (targetIdx: number) => {
+    if (draggedBlockIdx === null || draggedBlockIdx === targetIdx || !activeQuestion) {
+      setDraggedBlockIdx(null);
+      setDragOverBlockIdx(null);
+      return;
+    }
+
+    const cfg = parseQuestionConfig(activeQuestion);
+    const newBlocks = [...cfg.textBlocks];
+    const [moved] = newBlocks.splice(draggedBlockIdx, 1);
+    newBlocks.splice(targetIdx, 0, moved);
+
+    setDraggedBlockIdx(null);
+    setDragOverBlockIdx(null);
+
+    handleUpdateActiveQuestion({
+      options: { ...cfg, textBlocks: newBlocks },
+    });
+  };
+
   // Test quiz confetti
   const handleTestConfetti = () => {
     setPreviewRevealedQuiz(true);
@@ -510,20 +563,54 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
             {questions.map((q, idx) => {
               const Icon = typeIcons[q.type] || ListChecks;
               const isSelected = idx === activeIdx;
+              const isDragging = draggedQuestionIdx === idx;
+              const isDragOver = dragOverQuestionIdx === idx && draggedQuestionIdx !== idx;
 
               return (
                 <div
                   key={q.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedQuestionIdx(idx);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(idx));
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragOverQuestionIdx !== idx) {
+                      setDragOverQuestionIdx(idx);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverQuestionIdx === idx) {
+                      setDragOverQuestionIdx(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleDropQuestion(idx);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedQuestionIdx(null);
+                    setDragOverQuestionIdx(null);
+                  }}
                   onClick={() => {
                     setActiveIdx(idx);
                     setPreviewRevealedQuiz(false);
                   }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer transition-all flex-shrink-0 border ${
-                    isSelected
+                  className={`group flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-grab active:cursor-grabbing transition-all flex-shrink-0 border select-none ${
+                    isDragging
+                      ? 'opacity-40 scale-95 border-dashed border-teal-500 bg-teal-50/40'
+                      : isDragOver
+                      ? 'border-teal-500 ring-2 ring-teal-400/40 bg-teal-50/60 shadow-md scale-105'
+                      : isSelected
                       ? 'bg-teal-50 border-teal-500 text-teal-950 font-bold shadow-xs'
                       : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900'
                   }`}
+                  title="Glisser pour réorganiser, cliquer pour éditer"
                 >
+                  <GripVertical size={13} className="text-slate-300 group-hover:text-slate-500 transition-colors flex-shrink-0 cursor-grab" />
                   <span className="text-[11px] font-mono font-bold opacity-75">#{idx + 1}</span>
                   <Icon size={14} className={isSelected ? 'text-teal-600' : 'text-slate-400'} />
                   <span className="text-xs max-w-[100px] truncate">{q.title}</span>
@@ -534,7 +621,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                       <button
                         onClick={() => handleMoveQuestion(idx, -1)}
                         disabled={idx === 0}
-                        className="p-0.5 text-slate-400 hover:text-slate-900 disabled:opacity-20"
+                        className="p-0.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 cursor-pointer"
                         title="Monter"
                       >
                         <ChevronUp size={12} />
@@ -542,7 +629,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                       <button
                         onClick={() => handleMoveQuestion(idx, 1)}
                         disabled={idx === questions.length - 1}
-                        className="p-0.5 text-slate-400 hover:text-slate-900 disabled:opacity-20"
+                        className="p-0.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 cursor-pointer"
                         title="Descendre"
                       >
                         <ChevronDown size={12} />
@@ -696,15 +783,56 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                       const cfg = parseQuestionConfig(activeQuestion);
                       const canMoveUp = i > 0;
                       const canMoveDown = i < cfg.textBlocks.length - 1;
+                      const isDragging = draggedBlockIdx === i;
+                      const isDragOver = dragOverBlockIdx === i && draggedBlockIdx !== i;
 
                       return (
                         <div
                           key={block.id}
-                          className="rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-xs hover:border-slate-300 transition-all space-y-2.5"
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggedBlockIdx(i);
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/plain', String(i));
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (dragOverBlockIdx !== i) {
+                              setDragOverBlockIdx(i);
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverBlockIdx === i) {
+                              setDragOverBlockIdx(null);
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handleDropTextBlock(i);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedBlockIdx(null);
+                            setDragOverBlockIdx(null);
+                          }}
+                          className={`group rounded-2xl border-2 bg-white p-3.5 shadow-xs transition-all space-y-2.5 ${
+                            isDragging
+                              ? 'opacity-40 scale-95 border-dashed border-teal-500 bg-teal-50/30'
+                              : isDragOver
+                              ? 'border-teal-500 ring-2 ring-teal-400/40 bg-teal-50/50 shadow-md'
+                              : 'border-slate-200 hover:border-slate-300'
+                          }`}
                         >
                           {/* Block Header: Type, Move & Delete */}
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5">
+                              <div
+                                className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 text-slate-300 group-hover:text-slate-500 transition-colors"
+                                title="Glisser pour déplacer le texte"
+                              >
+                                <GripVertical size={15} />
+                              </div>
+
                               {/* Block Type Picker */}
                               <select
                                 value={block.type}

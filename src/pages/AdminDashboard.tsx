@@ -15,18 +15,14 @@ import {
   Radio,
   Sparkles,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import { useAuth } from '@/lib/auth';
 import type { Presentation as PresentationType } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-
-function generateJoinCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -56,8 +52,13 @@ const statusConfig: Record<string, { label: string; badgeClass: string; dotClass
 
 export function AdminDashboard({ onOpenPresentation }: { onOpenPresentation: (id: string) => void }) {
   const { signOut } = useAuth();
-  const [presentations, setPresentations] = useState<PresentationType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const rawPresentations = useQuery(api.presentations.list);
+  const presentations = useMemo(() => (rawPresentations ?? []) as PresentationType[], [rawPresentations]);
+  const loading = rawPresentations === undefined;
+
+  const createPresentation = useMutation(api.presentations.create);
+  const deletePresentation = useMutation(api.presentations.remove);
+
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
@@ -68,51 +69,33 @@ export function AdminDashboard({ onOpenPresentation }: { onOpenPresentation: (id
   const [presentationToDelete, setPresentationToDelete] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchPresentations = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('presentations')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error && data) setPresentations(data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchPresentations();
-  }, [fetchPresentations]);
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setCreating(true);
-    let joinCode = generateJoinCode();
-    let attempts = 0;
-    while (attempts < 5) {
-      const { data, error } = await supabase
-        .from('presentations')
-        .insert({ title: newTitle.trim(), join_code: joinCode })
-        .select()
-        .single();
-      if (!error && data) {
-        setNewTitle('');
-        setShowCreate(false);
-        await fetchPresentations();
-        onOpenPresentation(data.id);
-        return;
-      }
-      joinCode = generateJoinCode();
-      attempts++;
+    try {
+      const res = await createPresentation({ title: newTitle.trim() });
+      setNewTitle('');
+      setShowCreate(false);
+      onOpenPresentation(res.presentationId);
+    } catch (err) {
+      console.error('Failed to create presentation:', err);
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   };
 
   const handleConfirmDelete = async () => {
     if (!presentationToDelete) return;
     setDeleting(true);
-    await supabase.from('presentations').delete().eq('id', presentationToDelete.id);
-    setDeleting(false);
-    setPresentationToDelete(null);
-    await fetchPresentations();
+    try {
+      await deletePresentation({ id: presentationToDelete.id as any });
+    } catch (err) {
+      console.error('Failed to delete presentation:', err);
+    } finally {
+      setDeleting(false);
+      setPresentationToDelete(null);
+    }
   };
 
   const copyJoinCode = (code: string) => {

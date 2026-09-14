@@ -36,7 +36,8 @@ import {
   Quote,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import type {
   Presentation,
   Question,
@@ -193,40 +194,35 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchAll = useCallback(async () => {
-    const { data: pres } = await supabase
-      .from('presentations')
-      .select('*')
-      .eq('id', presentationId)
-      .maybeSingle();
+  const rawPres = useQuery(api.presentations.getById, { id: presentationId });
+  const rawQs = useQuery(api.questions.listByPresentation, { presentation_id: presentationId });
 
-    if (pres) {
-      setPresentation(pres);
-      setTitle(pres.title);
+  const updateTitleMutation = useMutation(api.presentations.updateTitle);
+  const createQuestionMutation = useMutation(api.questions.create);
+  const updateQuestionMutation = useMutation(api.questions.update);
+  const updatePositionsMutation = useMutation(api.questions.updatePositions);
+  const deleteQuestionMutation = useMutation(api.questions.remove);
+
+  useEffect(() => {
+    if (rawPres) {
+      setPresentation(rawPres as unknown as Presentation);
+      setTitle((prev) => (prev === '' ? rawPres.title : prev));
     }
+  }, [rawPres]);
 
-    const { data: qs } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('presentation_id', presentationId)
-      .order('position', { ascending: true });
-
-    if (qs) {
-      const normalizedQs = qs.map((q) => ({
+  useEffect(() => {
+    if (rawQs) {
+      const normalizedQs = rawQs.map((q) => ({
         ...q,
-        type: getEffectiveQuestionType(q),
-      }));
+        type: getEffectiveQuestionType(q as any),
+      })) as unknown as Question[];
       setQuestions(normalizedQs);
       if (normalizedQs.length > 0 && activeIdx >= normalizedQs.length) {
         setActiveIdx(0);
       }
+      setLoading(false);
     }
-    setLoading(false);
-  }, [presentationId, activeIdx]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  }, [rawQs, activeIdx]);
 
   // Debounced save for question changes
   const queueQuestionSave = (updatedQuestion: Question) => {
@@ -234,32 +230,30 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(async () => {
-      const isSlide = updatedQuestion.type === 'text_slide';
-      const dbType = isSlide ? 'open_text' : updatedQuestion.type;
-      const dbOptions = isSlide
-        ? { ...(updatedQuestion.options || {}), is_slide: true, kind: 'text_slide' }
-        : updatedQuestion.options;
-
-      await supabase
-        .from('questions')
-        .update({
+      try {
+        await updateQuestionMutation({
+          id: updatedQuestion.id as any,
           title: updatedQuestion.title,
-          type: dbType,
-          options: dbOptions,
+          type: updatedQuestion.type,
+          options: updatedQuestion.options,
           correct_option: updatedQuestion.correct_option,
-        })
-        .eq('id', updatedQuestion.id);
-
-      setSaveStatus('saved');
+        });
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error('Save question error:', err);
+      }
     }, 400);
   };
 
   const handleTitleBlur = async () => {
     if (!presentation || !title.trim()) return;
     setSaveStatus('saving');
-    await supabase.from('presentations').update({ title: title.trim() }).eq('id', presentation.id);
-    setPresentation({ ...presentation, title: title.trim() });
-    setSaveStatus('saved');
+    try {
+      await updateTitleMutation({ id: presentation.id as any, title: title.trim() });
+      setSaveStatus('saved');
+    } catch (err) {
+      console.error('Save title error:', err);
+    }
   };
 
   const activeQuestion = questions[activeIdx] || null;
@@ -280,7 +274,6 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     const defaultLayout = getDefaultLayout(defaultType);
     const isSlide = defaultType === 'text_slide';
 
-    const dbType = isSlide ? 'open_text' : defaultType;
     const initialOptions = isSlide
       ? {
           is_slide: true,
@@ -299,25 +292,33 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
           allowMultiple: false,
         };
 
-    const { data, error } = await supabase
-      .from('questions')
-      .insert({
+    try {
+      const newId = await createQuestionMutation({
         presentation_id: presentationId,
-        type: dbType,
+        type: defaultType,
         title: isSlide ? 'Nouvelle diapositive' : 'Nouvelle question',
         options: initialOptions,
         correct_option: null,
         position: questions.length,
-      })
-      .select()
-      .single();
+      });
 
-    if (data && !error) {
-      const newQ: Question = { ...data, type: defaultType };
+      const newQ: Question = {
+        id: newId,
+        presentation_id: presentationId,
+        type: defaultType,
+        title: isSlide ? 'Nouvelle diapositive' : 'Nouvelle question',
+        options: initialOptions,
+        correct_option: null,
+        position: questions.length,
+        created_at: new Date().toISOString(),
+      };
+
       const newQs = [...questions, newQ];
       setQuestions(newQs);
       setActiveIdx(newQs.length - 1);
       setSaveStatus('saved');
+    } catch (err) {
+      console.error('Failed to add question:', err);
     }
   };
 
@@ -331,16 +332,20 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     if (!q) return;
 
     setDeletingQuestion(true);
-    await supabase.from('questions').delete().eq('id', q.id);
+    try {
+      await deleteQuestionMutation({ id: q.id as any });
+      const newQs = questions.filter((_, i) => i !== questionToDelete);
+      setQuestions(newQs);
 
-    const newQs = questions.filter((_, i) => i !== questionToDelete);
-    setQuestions(newQs);
-
-    if (activeIdx >= newQs.length) {
-      setActiveIdx(Math.max(0, newQs.length - 1));
+      if (activeIdx >= newQs.length) {
+        setActiveIdx(Math.max(0, newQs.length - 1));
+      }
+    } catch (err) {
+      console.error('Failed to delete question:', err);
+    } finally {
+      setDeletingQuestion(false);
+      setQuestionToDelete(null);
     }
-    setDeletingQuestion(false);
-    setQuestionToDelete(null);
   };
 
   const handleMoveQuestion = async (index: number, dir: -1 | 1) => {
@@ -352,9 +357,12 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
     setQuestions(newQs);
     setActiveIdx(targetIdx);
 
-    // Save positions
-    for (let i = 0; i < newQs.length; i++) {
-      await supabase.from('questions').update({ position: i }).eq('id', newQs[i].id);
+    try {
+      await updatePositionsMutation({
+        positions: newQs.map((q, i) => ({ id: q.id as any, position: i })),
+      });
+    } catch (err) {
+      console.error('Failed to update positions:', err);
     }
   };
 

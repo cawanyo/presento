@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "convex:dev": "convex dev",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -13,6 +14,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "canvas-confetti": "^1.9.4",
+    "convex": "^1.45.0",
     "lucide-react": "^0.446.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",

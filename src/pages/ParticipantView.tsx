@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Presentation, ArrowRight, CheckCircle2, Loader2, Users, Star, Check, Plus, FileText } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import type { Presentation as PresentationType, Question, QuestionType } from '@/lib/types';
 import { parseQuestionConfig, getEffectiveQuestionType, MENTI_COLORS } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
@@ -23,10 +24,30 @@ function getOrCreateParticipantId(): string {
 }
 
 export function ParticipantView({ joinCode, onExit }: Props) {
-  const [presentation, setPresentation] = useState<PresentationType | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const presentationData = useQuery(api.presentations.getByJoinCode, {
+    join_code: joinCode.toUpperCase().trim(),
+  });
+  const presentation = presentationData as unknown as PresentationType | null | undefined;
+  const loading = presentationData === undefined;
+  const error = presentationData === null ? 'Présentation introuvable. Vérifiez le code PIN saisi.' : null;
+
+  const currentQuestionId = presentation?.current_question_id;
+  const questionData = useQuery(
+    api.questions.getById,
+    currentQuestionId ? { id: currentQuestionId } : 'skip'
+  );
+
+  const currentQuestion = useMemo(() => {
+    if (!questionData) return null;
+    return {
+      ...questionData,
+      type: getEffectiveQuestionType(questionData as any),
+    } as unknown as Question;
+  }, [questionData]);
+
+  const joinMutation = useMutation(api.participants.join);
+  const submitResponsesMutation = useMutation(api.responses.submit);
+
   const [name, setName] = useState('');
   const [joined, setJoined] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -34,85 +55,34 @@ export function ParticipantView({ joinCode, onExit }: Props) {
   const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [presentationEnded, setPresentationEnded] = useState(false);
 
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const participantId = useRef(getOrCreateParticipantId()).current;
+  const lastQuestionIdRef = useRef<string | null>(null);
 
-  const fetchPresentation = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('presentations')
-      .select('*')
-      .eq('join_code', joinCode.toUpperCase())
-      .maybeSingle();
-    if (error || !data) {
-      setError('Présentation introuvable. Vérifiez le code PIN saisi.');
-      setLoading(false);
-      return;
-    }
-    setPresentation(data);
-    if (data.status === 'ended') {
-      setPresentationEnded(true);
-    }
-    setLoading(false);
-  }, [joinCode]);
+  const presentationEnded = presentation?.status === 'ended';
 
+  // When question changes, reset input states
   useEffect(() => {
-    fetchPresentation();
-  }, [fetchPresentation]);
-
-  const fetchCurrentQuestion = useCallback(async (questionId: string) => {
-    const { data } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('id', questionId)
-      .maybeSingle();
-    if (data) {
-      setCurrentQuestion({
-        ...data,
-        type: getEffectiveQuestionType(data),
-      });
+    if (currentQuestionId !== lastQuestionIdRef.current) {
+      lastQuestionIdRef.current = currentQuestionId ?? null;
+      setSubmitted(false);
+      setAnswer('');
+      setSelectedOptions([]);
+      setRating(0);
     }
-  }, []);
+  }, [currentQuestionId]);
 
   const handleJoin = async () => {
     if (!presentation) return;
-    await supabase.from('participants').upsert({
-      id: participantId,
-      presentation_id: presentation.id,
-      name: name.trim() || null,
-      joined_at: new Date().toISOString(),
-    });
-    setJoined(true);
-
-    // Subscribe to presentation updates (slide change, ended)
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-    const channel = supabase
-      .channel(`participant-${presentation.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'presentations', filter: `id=eq.${presentation.id}` },
-        (payload) => {
-          const updated = payload.new as PresentationType;
-          setPresentation(updated);
-          setPresentationEnded(updated.status === 'ended');
-          if (updated.current_question_id) {
-            fetchCurrentQuestion(updated.current_question_id);
-          } else {
-            setCurrentQuestion(null);
-          }
-          setSubmitted(false);
-          setAnswer('');
-          setSelectedOptions([]);
-          setRating(0);
-        }
-      )
-      .subscribe();
-    channelRef.current = channel;
-
-    // Fetch current question if already active
-    if (presentation.current_question_id) {
-      fetchCurrentQuestion(presentation.current_question_id);
+    try {
+      await joinMutation({
+        presentation_id: presentation.id,
+        participant_id: participantId,
+        name: name.trim() || null,
+      });
+      setJoined(true);
+    } catch (err) {
+      console.error('Failed to join participant:', err);
     }
   };
 
@@ -160,24 +130,21 @@ export function ParticipantView({ joinCode, onExit }: Props) {
       return;
     }
 
-    const rows = answerValues.map((val) => ({
-      question_id: currentQuestion.id,
-      participant_id: participantId,
-      participant_name: name.trim() || null,
-      answer: val,
-    }));
+    try {
+      await submitResponsesMutation({
+        question_id: currentQuestion.id,
+        participant_id: participantId,
+        participant_name: name.trim() || null,
+        answers: answerValues,
+      });
 
-    await supabase.from('responses').insert(rows);
-
-    setSubmitted(true);
-    setSubmitting(false);
+      setSubmitted(true);
+    } catch (err) {
+      console.error('Failed to submit response:', err);
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  useEffect(() => {
-    return () => {
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-    };
-  }, []);
 
   if (loading) {
     return (

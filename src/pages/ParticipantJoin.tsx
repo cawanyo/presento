@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Presentation, ArrowRight, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { convex } from '@/lib/convex';
+import { api } from '../../convex/_generated/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
@@ -27,17 +28,20 @@ export function ParticipantJoin({ onJoin, onBack }: Props) {
     }
     setError(null);
     setLoading(true);
-    const { data } = await supabase
-      .from('presentations')
-      .select('join_code')
-      .eq('join_code', code.toUpperCase().trim())
-      .maybeSingle();
-    if (!data) {
-      setError('Code invalide. Aucune présentation trouvée.');
+    try {
+      const data = await convex.query(api.presentations.getByJoinCode, {
+        join_code: code.toUpperCase().trim(),
+      });
+      if (!data) {
+        setError('Code invalide. Aucune présentation trouvée.');
+        setLoading(false);
+        return;
+      }
+      onJoin(code.toUpperCase().trim());
+    } catch (err) {
+      setError('Erreur lors de la vérification du code.');
       setLoading(false);
-      return;
     }
-    onJoin(code.toUpperCase().trim());
   };
 
   return (

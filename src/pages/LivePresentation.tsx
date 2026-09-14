@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
 import {
@@ -32,7 +32,8 @@ import {
   QrCode,
   type LucideIcon,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../convex/_generated/api';
 import type {
   Presentation,
   Question,
@@ -71,11 +72,16 @@ const LAYOUT_ICONS: Record<string, LucideIcon> = {
 };
 
 export function LivePresentation({ presentationId, onBack }: Props) {
+  const rawPres = useQuery(api.presentations.getById, { id: presentationId });
+  const rawQs = useQuery(api.questions.listByPresentation, { presentation_id: presentationId });
+  const liveParticipantCount = useQuery(api.participants.count, { presentation_id: presentationId });
+
+  const updatePresentationState = useMutation(api.presentations.updateState);
+  const updateQuestionMutation = useMutation(api.questions.update);
+
   const [presentation, setPresentation] = useState<Presentation | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(-1);
-  const [responses, setResponses] = useState<ResponseType[]>([]);
-  const [participantCount, setParticipantCount] = useState(0);
 
   // Presenter Controls
   const [activeLayout, setActiveLayout] = useState<ChartLayout>('bars');
@@ -91,52 +97,39 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const joinUrl = `${window.location.origin}/#/join/${presentation?.join_code ?? ''}`;
 
-  const fetchAll = useCallback(async () => {
-    const { data: pres } = await supabase
-      .from('presentations')
-      .select('*')
-      .eq('id', presentationId)
-      .maybeSingle();
+  // Sync presentation
+  useEffect(() => {
+    if (rawPres) {
+      setPresentation(rawPres as unknown as Presentation);
+    }
+  }, [rawPres]);
 
-    if (pres) {
-      setPresentation(pres);
-      const { data: qs } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('presentation_id', presentationId)
-        .order('position', { ascending: true });
+  // Sync questions and current question index
+  useEffect(() => {
+    if (rawQs && rawQs.length > 0) {
+      const normalizedQs = rawQs.map((q) => ({
+        ...q,
+        type: getEffectiveQuestionType(q as any),
+      })) as unknown as Question[];
+      setQuestions(normalizedQs);
 
-      if (qs && qs.length > 0) {
-        const normalizedQs = qs.map((q) => ({
-          ...q,
-          type: getEffectiveQuestionType(q),
-        }));
-        setQuestions(normalizedQs);
-        if (pres.current_question_id) {
-          const ci = normalizedQs.findIndex((q) => q.id === pres.current_question_id);
+      if (currentIdx === -1 && rawPres) {
+        if (rawPres.current_question_id) {
+          const ci = normalizedQs.findIndex((q) => q.id === rawPres.current_question_id);
           const initialIndex = ci >= 0 ? ci : 0;
           setCurrentIdx(initialIndex);
           const cfg = parseQuestionConfig(normalizedQs[initialIndex]);
           setActiveLayout(cfg.layout);
         } else {
-          setCurrentIdx(-1);
+          setCurrentIdx(0);
+          const cfg = parseQuestionConfig(normalizedQs[0]);
+          setActiveLayout(cfg.layout);
         }
       }
     }
-
-    const { data: parts } = await supabase
-      .from('participants')
-      .select('id')
-      .eq('presentation_id', presentationId);
-    if (parts) setParticipantCount(parts.length);
-  }, [presentationId]);
-
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  }, [rawQs, rawPres, currentIdx]);
 
   // Handle browser back button (comeback) & page unload
   useEffect(() => {
@@ -182,50 +175,16 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     onBack();
   };
 
-  // Realtime subscription for votes and presentation events
-  useEffect(() => {
-    if (!presentation || currentIdx < 0 || !questions[currentIdx]) return;
-    const currentQ = questions[currentIdx];
-    const questionId = currentQ.id;
+  const currentQ = currentIdx >= 0 && questions[currentIdx] ? questions[currentIdx] : null;
+  const currentQId = currentQ?.id;
 
-    // Reset layout and reveal state for the new question
-    const config = parseQuestionConfig(currentQ);
-    setActiveLayout(config.layout);
-    setRevealedQuiz(false);
-
-    // Fetch existing responses
-    supabase
-      .from('responses')
-      .select('*')
-      .eq('question_id', questionId)
-      .then(({ data }) => {
-        if (data) setResponses(data);
-      });
-
-    // Setup channel
-    if (channelRef.current) supabase.removeChannel(channelRef.current);
-    const channel = supabase
-      .channel(`live-${presentationId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'responses', filter: `question_id=eq.${questionId}` },
-        (payload) => {
-          setResponses((prev) => [...prev, payload.new as ResponseType]);
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'participants', filter: `presentation_id=eq.${presentationId}` },
-        () => setParticipantCount((c) => c + 1)
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [presentation, currentIdx, questions, presentationId]);
+  // Real-time responses via Convex subscription
+  const rawResponses = useQuery(
+    api.responses.listByQuestion,
+    currentQId ? { question_id: currentQId } : 'skip'
+  );
+  const responses = useMemo(() => (rawResponses ?? []) as ResponseType[], [rawResponses]);
+  const participantCount = liveParticipantCount ?? 0;
 
   // Update current question
   const updateCurrentQuestion = async (idx: number) => {
@@ -233,48 +192,54 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     const questionId = idx >= 0 && idx < questions.length ? questions[idx].id : null;
     const status = idx >= 0 ? 'active' : presentation.status === 'ended' ? 'ended' : 'draft';
 
-    await supabase
-      .from('presentations')
-      .update({ current_question_id: questionId, status })
-      .eq('id', presentation.id);
+    try {
+      await updatePresentationState({
+        id: presentation.id as any,
+        status,
+        current_question_id: questionId,
+      });
 
-    setPresentation({ ...presentation, current_question_id: questionId, status });
-    setCurrentIdx(idx);
-    setResponses([]);
-    setRevealedQuiz(false);
-    setIsLocked(false);
+      setPresentation({ ...presentation, current_question_id: questionId, status });
+      setCurrentIdx(idx);
+      setRevealedQuiz(false);
+      setIsLocked(false);
 
-    if (idx >= 0 && questions[idx]) {
-      const cfg = parseQuestionConfig(questions[idx]);
-      setActiveLayout(cfg.layout);
+      if (idx >= 0 && questions[idx]) {
+        const cfg = parseQuestionConfig(questions[idx]);
+        setActiveLayout(cfg.layout);
+      }
+    } catch (err) {
+      console.error('Failed to update question:', err);
     }
   };
 
   const goPrev = () => currentIdx > 0 && updateCurrentQuestion(currentIdx - 1);
   const goNext = () => currentIdx < questions.length - 1 && updateCurrentQuestion(currentIdx + 1);
 
-  // Switch layout on the fly and optionally persist
+  // Switch layout on the fly and persist
   const handleSelectLayout = async (layout: ChartLayout) => {
     setActiveLayout(layout);
-    const currentQ = questions[currentIdx];
-    if (!currentQ) return;
+    const curr = questions[currentIdx];
+    if (!curr) return;
 
-    // Persist layout to question options
-    const cfg = parseQuestionConfig(currentQ);
+    const cfg = parseQuestionConfig(curr);
     const newOptions = {
       choices: cfg.choices,
       layout,
     };
 
-    await supabase
-      .from('questions')
-      .update({ options: newOptions })
-      .eq('id', currentQ.id);
+    try {
+      await updateQuestionMutation({
+        id: curr.id as any,
+        options: newOptions,
+      });
 
-    // Update in local state
-    setQuestions((prev) =>
-      prev.map((q) => (q.id === currentQ.id ? { ...q, options: newOptions } : q))
-    );
+      setQuestions((prev) =>
+        prev.map((q) => (q.id === curr.id ? { ...q, options: newOptions } : q))
+      );
+    } catch (err) {
+      console.error('Failed to update layout:', err);
+    }
   };
 
   // Reveal quiz answer with confetti
@@ -333,10 +298,20 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   };
 
   const handleConfirmEnd = async () => {
-    await supabase
-      .from('presentations')
-      .update({ current_question_id: null, status: 'ended' })
-      .eq('id', presentationId);
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {}
+    }
+    try {
+      await updatePresentationState({
+        id: presentationId as any,
+        status: 'ended',
+        current_question_id: null,
+      });
+    } catch (err) {
+      console.error('Failed to end presentation:', err);
+    }
     setShowEndConfirm(false);
     onBack();
   };

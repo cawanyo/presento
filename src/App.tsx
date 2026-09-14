@@ -71,7 +71,7 @@ function AppContent() {
   }
 
   if (route.name === 'join') {
-    return <ParticipantJoin onJoin={(code) => navigate({ name: 'participant', code })} />;
+    return <ParticipantJoin onJoin={(code) => navigate({ name: 'participant', code })} onBack={goHome} />;
   }
 
   if (route.name === 'participant') {
@@ -87,7 +87,7 @@ function AppContent() {
       );
     }
     if (!isAdmin) {
-      return <AdminLogin />;
+      return <AdminLogin onBack={goHome} />;
     }
     if (route.view.name === 'dashboard') {
       return (
@@ -115,40 +115,60 @@ function AppContent() {
     }
   }
 
-  return null;
+  return <HomePage onAdmin={() => navigate({ name: 'admin', view: { name: 'dashboard' } })} onJoin={() => navigate({ name: 'join' })} />;
 }
 
 function HomePage({ onAdmin, onJoin }: { onAdmin: () => void; onJoin: () => void }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-teal-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg text-center">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-teal-500/20 border border-teal-400/30 mb-6">
-          <Presentation className="text-teal-400" size={40} />
+    <div className="min-h-screen bg-white flex items-center justify-center p-4 relative overflow-hidden selection:bg-teal-100">
+      {/* Subtle ambient light accents */}
+      <div className="absolute -top-40 -right-40 w-96 h-96 bg-teal-100/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-50 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-lg text-center relative z-10">
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-tr from-teal-600 to-teal-400 text-white shadow-xl shadow-teal-500/25 mb-6">
+          <Presentation size={38} />
         </div>
-        <h1 className="text-4xl font-bold text-white tracking-tight mb-3">Presento</h1>
-        <p className="text-slate-400 text-lg mb-10">Présentations interactives en temps réel</p>
+        <h1 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight mb-3">
+          Presento
+        </h1>
+        <p className="text-slate-500 text-base sm:text-lg mb-10 max-w-md mx-auto">
+          Présentations et sondages interactifs en direct, simples et élégants
+        </p>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <button
             onClick={onAdmin}
-            className="group rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-8 hover:border-teal-400/40 hover:bg-white/10 transition-all duration-200"
+            className="group rounded-3xl bg-white border-2 border-slate-200/90 p-8 hover:border-teal-500 hover:shadow-2xl hover:shadow-teal-500/10 transition-all duration-300 text-left flex flex-col justify-between"
           >
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-teal-500/20 mb-4 group-hover:scale-110 transition-transform">
-              <Presentation className="text-teal-400" size={24} />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-teal-50 text-teal-600 mb-6 group-hover:scale-110 group-hover:bg-teal-500 group-hover:text-white transition-all shadow-sm">
+              <Presentation size={26} />
             </div>
-            <h2 className="text-lg font-semibold text-white mb-1">Animateur</h2>
-            <p className="text-sm text-slate-400">Créer et présenter</p>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-teal-600 transition-colors">
+                Animateur
+              </h2>
+              <p className="text-sm text-slate-500">
+                Créer, éditer et présenter en direct
+              </p>
+            </div>
           </button>
 
           <button
             onClick={onJoin}
-            className="group rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-8 hover:border-teal-400/40 hover:bg-white/10 transition-all duration-200"
+            className="group rounded-3xl bg-white border-2 border-slate-200/90 p-8 hover:border-teal-500 hover:shadow-2xl hover:shadow-teal-500/10 transition-all duration-300 text-left flex flex-col justify-between"
           >
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-teal-500/20 mb-4 group-hover:scale-110 transition-transform">
-              <Users className="text-teal-400" size={24} />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 mb-6 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
+              <Users size={26} />
             </div>
-            <h2 className="text-lg font-semibold text-white mb-1">Participant</h2>
-            <p className="text-sm text-slate-400">Rejoindre avec un code</p>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 mb-1 group-hover:text-indigo-600 transition-colors">
+                Participant
+              </h2>
+              <p className="text-sm text-slate-500">
+                Rejoindre une session avec un code PIN
+              </p>
+            </div>
           </button>
         </div>
       </div>

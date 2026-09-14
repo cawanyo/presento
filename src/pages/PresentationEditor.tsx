@@ -28,6 +28,7 @@ import {
   X,
   Share2,
   QrCode,
+  CheckSquare,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
@@ -263,6 +264,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
         options: {
           choices: ['Option 1', 'Option 2'],
           layout: defaultLayout,
+          allowMultiple: false,
         },
         correct_option: null,
         position: questions.length,
@@ -533,6 +535,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                             options: {
                               choices: currentCfg.choices,
                               layout: newLayout,
+                              allowMultiple: currentCfg.allowMultiple,
                             },
                           });
                         }}
@@ -571,6 +574,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                               options: {
                                 choices: cfg.choices,
                                 layout: lo.id,
+                                allowMultiple: cfg.allowMultiple,
                               },
                             });
                           }}
@@ -655,6 +659,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                                 options: {
                                   choices: newChoices,
                                   layout: cfg.layout,
+                                  allowMultiple: cfg.allowMultiple,
                                 },
                               });
                             }}
@@ -675,6 +680,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                                   options: {
                                     choices: newChoices,
                                     layout: cfg.layout,
+                                    allowMultiple: cfg.allowMultiple,
                                   },
                                   correct_option: newCorrect,
                                 });
@@ -698,6 +704,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                           options: {
                             choices: [...cfg.choices, `Option ${cfg.choices.length + 1}`],
                             layout: cfg.layout,
+                            allowMultiple: cfg.allowMultiple,
                           },
                         });
                       }}
@@ -705,6 +712,112 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                     >
                       <Plus size={14} /> Ajouter une option
                     </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Option: Autoriser plusieurs réponses pour Choix multiple */}
+              {activeQuestion.type === 'multiple_choice' && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs transition-all hover:border-slate-300">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-start gap-2.5 pr-2">
+                      <div
+                        className={`p-1.5 rounded-lg mt-0.5 ${
+                          parseQuestionConfig(activeQuestion).allowMultiple
+                            ? 'bg-teal-50 text-teal-600'
+                            : 'bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        <CheckSquare size={16} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">
+                          Autoriser plusieurs réponses
+                        </span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">
+                          Les participants peuvent cocher plusieurs choix avant de valider
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={parseQuestionConfig(activeQuestion).allowMultiple}
+                      onClick={() => {
+                        const cfg = parseQuestionConfig(activeQuestion);
+                        handleUpdateActiveQuestion({
+                          options: {
+                            ...cfg,
+                            allowMultiple: !cfg.allowMultiple,
+                          },
+                        });
+                      }}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        parseQuestionConfig(activeQuestion).allowMultiple ? 'bg-teal-600' : 'bg-slate-200'
+                      }`}
+                      title={parseQuestionConfig(activeQuestion).allowMultiple ? 'Désactiver plusieurs choix' : 'Activer plusieurs choix'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          parseQuestionConfig(activeQuestion).allowMultiple ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Option: Autoriser plusieurs réponses pour Texte libre / Nuage de mots */}
+              {['open_text', 'word_cloud'].includes(activeQuestion.type) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs transition-all hover:border-slate-300">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-start gap-2.5 pr-2">
+                      <div
+                        className={`p-1.5 rounded-lg mt-0.5 ${
+                          parseQuestionConfig(activeQuestion).allowMultiple
+                            ? 'bg-teal-50 text-teal-600'
+                            : 'bg-slate-100 text-slate-400'
+                        }`}
+                      >
+                        <CheckSquare size={16} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">
+                          Autoriser plusieurs réponses
+                        </span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5 leading-snug">
+                          {activeQuestion.type === 'word_cloud'
+                            ? 'Les participants peuvent envoyer plusieurs mots à la suite'
+                            : 'Les participants peuvent envoyer plusieurs messages ou avis'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={parseQuestionConfig(activeQuestion).allowMultiple}
+                      onClick={() => {
+                        const cfg = parseQuestionConfig(activeQuestion);
+                        handleUpdateActiveQuestion({
+                          options: {
+                            ...cfg,
+                            allowMultiple: !cfg.allowMultiple,
+                          },
+                        });
+                      }}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        parseQuestionConfig(activeQuestion).allowMultiple ? 'bg-teal-600' : 'bg-slate-200'
+                      }`}
+                      title={parseQuestionConfig(activeQuestion).allowMultiple ? 'Désactiver plusieurs réponses' : 'Activer plusieurs réponses'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          parseQuestionConfig(activeQuestion).allowMultiple ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               )}
@@ -867,6 +980,13 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
 
                 {/* Question Slide Content */}
                 <div className="flex-1 flex flex-col items-center justify-center py-3 my-auto overflow-hidden">
+                  {parseQuestionConfig(activeQuestion).allowMultiple && (
+                    <div className="flex items-center justify-center mb-2">
+                      <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 rounded-full">
+                        {activeQuestion.type === 'multiple_choice' ? 'Choix multiples autorisés' : 'Plusieurs réponses autorisées'}
+                      </span>
+                    </div>
+                  )}
                   <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 text-center leading-tight mb-3 drop-shadow-xs max-w-2xl">
                     {activeQuestion.title || 'Votre question ici...'}
                   </h2>

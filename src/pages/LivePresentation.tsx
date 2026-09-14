@@ -574,6 +574,11 @@ export function LivePresentation({ presentationId, onBack }: Props) {
                     Quiz
                   </span>
                 )}
+                {parseQuestionConfig(currentQuestion).allowMultiple && (
+                  <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                    {currentQuestion.type === 'multiple_choice' ? 'Choix multiples' : 'Réponses multiples'}
+                  </span>
+                )}
               </div>
 
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">

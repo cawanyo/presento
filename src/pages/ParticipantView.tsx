@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Presentation, ArrowRight, CheckCircle2, Loader2, Users, Star } from 'lucide-react';
+import { Presentation, ArrowRight, CheckCircle2, Loader2, Users, Star, Check, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Presentation as PresentationType, Question, QuestionType } from '@/lib/types';
 import { parseQuestionConfig, MENTI_COLORS } from '@/lib/types';
@@ -31,7 +31,7 @@ export function ParticipantView({ joinCode, onExit }: Props) {
   const [joined, setJoined] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [answer, setAnswer] = useState('');
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
   const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [presentationEnded, setPresentationEnded] = useState(false);
@@ -98,7 +98,7 @@ export function ParticipantView({ joinCode, onExit }: Props) {
           }
           setSubmitted(false);
           setAnswer('');
-          setSelectedOption(null);
+          setSelectedOptions([]);
           setRating(0);
         }
       )
@@ -111,30 +111,58 @@ export function ParticipantView({ joinCode, onExit }: Props) {
     }
   };
 
+  const handleToggleOption = (idx: number) => {
+    if (!currentQuestion) return;
+    const { allowMultiple } = parseQuestionConfig(currentQuestion);
+    if (allowMultiple && currentQuestion.type === 'multiple_choice') {
+      setSelectedOptions((prev) =>
+        prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+      );
+    } else {
+      setSelectedOptions([idx]);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!currentQuestion || !presentation) return;
     setSubmitting(true);
 
     const { choices } = parseQuestionConfig(currentQuestion);
 
-    let answerValue = '';
+    let answerValues: string[] = [];
     if (currentQuestion.type === 'multiple_choice' || currentQuestion.type === 'quiz') {
-      if (selectedOption === null) return;
-      answerValue = choices[selectedOption] ?? '';
+      if (selectedOptions.length === 0) {
+        setSubmitting(false);
+        return;
+      }
+      answerValues = selectedOptions.map((i) => choices[i]).filter(Boolean);
     } else if (currentQuestion.type === 'rating') {
-      if (rating === 0) return;
-      answerValue = String(rating);
+      if (rating === 0) {
+        setSubmitting(false);
+        return;
+      }
+      answerValues = [String(rating)];
     } else {
-      if (!answer.trim()) return;
-      answerValue = answer.trim();
+      if (!answer.trim()) {
+        setSubmitting(false);
+        return;
+      }
+      answerValues = [answer.trim()];
     }
 
-    await supabase.from('responses').insert({
+    if (answerValues.length === 0) {
+      setSubmitting(false);
+      return;
+    }
+
+    const rows = answerValues.map((val) => ({
       question_id: currentQuestion.id,
       participant_id: participantId,
       participant_name: name.trim() || null,
-      answer: answerValue,
-    });
+      answer: val,
+    }));
+
+    await supabase.from('responses').insert(rows);
 
     setSubmitted(true);
     setSubmitting(false);
@@ -240,6 +268,9 @@ export function ParticipantView({ joinCode, onExit }: Props) {
 
   // Step 4: Already submitted answer
   if (submitted) {
+    const cfg = currentQuestion ? parseQuestionConfig(currentQuestion) : null;
+    const canSubmitAgain = Boolean(cfg?.allowMultiple);
+
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center max-w-xs animate-in zoom-in-95">
@@ -247,9 +278,26 @@ export function ParticipantView({ joinCode, onExit }: Props) {
             <CheckCircle2 size={40} />
           </div>
           <h2 className="text-2xl font-black text-slate-900 mb-2">Vote enregistré !</h2>
-          <p className="text-slate-500 text-sm mb-6">
-            Votre réponse s'affiche en direct sur l'écran du présentateur.
+          <p className="text-slate-500 text-sm mb-5">
+            {canSubmitAgain
+              ? "Vos réponses ont été enregistrées. Vous pouvez en envoyer d'autres si vous le souhaitez."
+              : "Votre réponse s'affiche en direct sur l'écran du présentateur."}
           </p>
+
+          {canSubmitAgain && (
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitted(false);
+                setAnswer('');
+                setSelectedOptions([]);
+              }}
+              className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 mb-4 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm shadow-md shadow-teal-600/20 transition-all active:scale-98"
+            >
+              <Plus size={16} /> Envoyer une autre réponse
+            </button>
+          )}
+
           <div className="flex items-center justify-center gap-2 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-4 py-2 rounded-full">
             <Loader2 className="animate-spin" size={14} />
             <span>En attente de la suite...</span>
@@ -260,7 +308,7 @@ export function ParticipantView({ joinCode, onExit }: Props) {
   }
 
   // Step 5: Answer current question
-  const { choices } = parseQuestionConfig(currentQuestion);
+  const { choices, allowMultiple } = parseQuestionConfig(currentQuestion);
 
   return (
     <div className="min-h-screen bg-white text-slate-800 flex flex-col justify-between p-4 sm:p-6">
@@ -277,19 +325,32 @@ export function ParticipantView({ joinCode, onExit }: Props) {
       {/* Main question box */}
       <main className="w-full max-w-lg mx-auto my-auto py-6">
         <div className="text-center mb-6">
-          <span className="text-xs font-bold uppercase tracking-wider text-teal-600 mb-2 inline-block">
-            {currentQuestion.type === 'quiz' ? '⚡ Question Quiz' : 'Votre avis'}
-          </span>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-teal-600">
+              {currentQuestion.type === 'quiz' ? '⚡ Question Quiz' : 'Votre avis'}
+            </span>
+            {allowMultiple && (
+              <span className="text-[11px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+                Plusieurs réponses possibles
+              </span>
+            )}
+          </div>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
             {currentQuestion.title}
           </h2>
+          {allowMultiple && currentQuestion.type === 'multiple_choice' && (
+            <p className="text-xs text-slate-500 mt-2 font-medium">
+              Vous pouvez cocher une ou plusieurs options ci-dessous
+            </p>
+          )}
         </div>
 
         <ParticipantInput
           type={currentQuestion.type}
           options={choices}
-          selectedOption={selectedOption}
-          setSelectedOption={setSelectedOption}
+          allowMultiple={allowMultiple}
+          selectedOptions={selectedOptions}
+          onToggleOption={handleToggleOption}
           answer={answer}
           setAnswer={setAnswer}
           rating={rating}
@@ -302,12 +363,16 @@ export function ParticipantView({ joinCode, onExit }: Props) {
           className="w-full mt-6 text-base font-bold bg-teal-600 hover:bg-teal-500 text-white shadow-xl shadow-teal-600/20"
           disabled={
             submitting ||
-            ((currentQuestion.type === 'multiple_choice' || currentQuestion.type === 'quiz') && selectedOption === null) ||
+            ((currentQuestion.type === 'multiple_choice' || currentQuestion.type === 'quiz') && selectedOptions.length === 0) ||
             (currentQuestion.type === 'rating' && rating === 0) ||
             ((currentQuestion.type === 'word_cloud' || currentQuestion.type === 'open_text') && !answer.trim())
           }
         >
-          {submitting ? 'Envoi...' : 'Valider mon vote'}
+          {submitting
+            ? 'Envoi...'
+            : allowMultiple && selectedOptions.length > 1
+            ? `Valider mes choix (${selectedOptions.length})`
+            : 'Valider mon vote'}
         </Button>
       </main>
 
@@ -321,8 +386,9 @@ export function ParticipantView({ joinCode, onExit }: Props) {
 function ParticipantInput({
   type,
   options,
-  selectedOption,
-  setSelectedOption,
+  allowMultiple,
+  selectedOptions,
+  onToggleOption,
   answer,
   setAnswer,
   rating,
@@ -330,22 +396,26 @@ function ParticipantInput({
 }: {
   type: QuestionType;
   options: string[];
-  selectedOption: number | null;
-  setSelectedOption: (n: number | null) => void;
+  allowMultiple: boolean;
+  selectedOptions: number[];
+  onToggleOption: (n: number) => void;
   answer: string;
   setAnswer: (s: string) => void;
   rating: number;
   setRating: (n: number) => void;
 }) {
   if (type === 'multiple_choice' || type === 'quiz') {
+    const isMulti = allowMultiple && type === 'multiple_choice';
+
     return (
       <div className="space-y-3">
         {options.map((opt, i) => {
-          const isSelected = selectedOption === i;
+          const isSelected = selectedOptions.includes(i);
           return (
             <button
               key={i}
-              onClick={() => setSelectedOption(i)}
+              type="button"
+              onClick={() => onToggleOption(i)}
               className={`w-full text-left rounded-2xl border-2 p-4 transition-all duration-200 flex items-center justify-between ${
                 isSelected
                   ? 'border-teal-500 bg-teal-50/70 text-teal-950 shadow-md shadow-teal-500/10 scale-[1.01]'
@@ -366,11 +436,19 @@ function ParticipantInput({
               </div>
 
               <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                  isSelected ? 'border-teal-600 bg-teal-600' : 'border-slate-300'
+                className={`w-6 h-6 flex items-center justify-center flex-shrink-0 transition-all ${
+                  isMulti ? 'rounded-lg' : 'rounded-full'
+                } border-2 ${
+                  isSelected ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 bg-white'
                 }`}
               >
-                {isSelected && <CheckCircle2 size={14} className="text-white" />}
+                {isSelected && (
+                  isMulti ? (
+                    <Check size={14} className="stroke-[3]" />
+                  ) : (
+                    <CheckCircle2 size={14} className="text-white" />
+                  )
+                )}
               </div>
             </button>
           );

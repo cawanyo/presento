@@ -101,23 +101,27 @@ export const MENTI_COLORS = [
 export interface QuestionConfig {
   choices: string[];
   layout: ChartLayout;
+  allowMultiple: boolean;
 }
 
 export function parseQuestionConfig(question: Question | null): QuestionConfig {
-  if (!question) return { choices: [], layout: 'bars' };
+  if (!question) return { choices: [], layout: 'bars', allowMultiple: false };
   const raw = question.options as any;
 
   let choices: string[] = [];
   let layout: ChartLayout = getDefaultLayout(question.type);
+  let allowMultiple = false;
 
   if (Array.isArray(raw)) {
     choices = raw;
   } else if (raw && typeof raw === 'object') {
     if (Array.isArray(raw.choices)) choices = raw.choices;
     if (raw.layout) layout = raw.layout as ChartLayout;
+    if (typeof raw.allowMultiple === 'boolean') allowMultiple = raw.allowMultiple;
+    if (typeof raw.allow_multiple === 'boolean') allowMultiple = raw.allow_multiple;
   }
 
-  return { choices, layout };
+  return { choices, layout, allowMultiple };
 }
 
 export function getDefaultLayout(type: QuestionType): ChartLayout {

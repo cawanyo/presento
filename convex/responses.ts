@@ -36,6 +36,33 @@ export const submit = mutation({
   },
 });
 
+export const remove = mutation({
+  args: { id: v.id("responses") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.id);
+  },
+});
+
+export const removeByWord = mutation({
+  args: {
+    question_id: v.string(),
+    word: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const target = args.word.trim().toLowerCase();
+    const responses = await ctx.db
+      .query("responses")
+      .withIndex("by_question_id", (q) => q.eq("question_id", args.question_id))
+      .collect();
+
+    for (const r of responses) {
+      if (r.answer.trim().toLowerCase() === target) {
+        await ctx.db.delete(r._id);
+      }
+    }
+  },
+});
+
 export const clearByQuestion = mutation({
   args: { question_id: v.string() },
   handler: async (ctx, args) => {

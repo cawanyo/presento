@@ -282,7 +282,7 @@ export function ParticipantView({ joinCode, onExit }: Props) {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-emerald-50 text-emerald-600 border-2 border-emerald-200 mb-4 shadow-sm">
             <CheckCircle2 size={40} />
           </div>
-          <h2 className="text-2xl font-black text-slate-900 mb-2">Vote enregistré !</h2>
+          <h2 className="text-2xl font-black text-slate-900 mb-2">Réponse enregistrée !</h2>
           <p className="text-slate-500 text-sm mb-5">
             {canSubmitAgain
               ? "Vos réponses ont été enregistrées. Vous pouvez en envoyer d'autres si vous le souhaitez."
@@ -445,7 +445,7 @@ export function ParticipantView({ joinCode, onExit }: Props) {
             ? 'Envoi...'
             : allowMultiple && selectedOptions.length > 1
             ? `Valider mes choix (${selectedOptions.length})`
-            : 'Valider mon vote'}
+            : 'Soumettre ma réponse'}
         </Button>
       </main>
 

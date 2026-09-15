@@ -1316,11 +1316,11 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
           }`}
         >
           {/* Preview Toolbar */}
-          <div className="w-full max-w-4xl flex items-center justify-between gap-3 mb-3 pb-2 border-b border-slate-200">
+          <div className="w-full max-w-4xl flex items-center justify-between gap-3 mb-1 pb-2 border-b border-slate-200">
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
                 <Monitor size={15} className="text-teal-600" />
-                Aperçu diapositive (Écran public 16:9)
+                Aperçu diapositive 
               </span>
             </div>
 
@@ -1337,7 +1337,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
               </label>
 
               {/* Theme selector */}
-              <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-xl shadow-xs">
+              {/* <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-xl shadow-xs">
                 <Palette size={13} className="text-slate-400" />
                 <select
                   value={previewTheme}
@@ -1350,7 +1350,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
                     </option>
                   ))}
                 </select>
-              </div>
+              </div> */}
 
               {/* Quiz test confetti button if applicable */}
               {activeQuestion?.type === 'quiz' && (
@@ -1368,7 +1368,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
           </div>
 
           {/* 16:9 Slide Canvas */}
-          <div className="w-full max-w-4xl flex-1 flex items-center justify-center my-auto py-2">
+          <div className="w-full max-w-4xl flex-1 flex items-center justify-center py-2">
             {activeQuestion ? (
               <div
                 className={`w-full aspect-[16/9] max-h-[560px] rounded-3xl bg-gradient-to-br ${themeConfig.bgGradient} border-2 border-slate-200/90 shadow-2xl p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden transition-all duration-500`}

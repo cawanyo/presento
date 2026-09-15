@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, User, Quote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, User, Quote, Trash2 } from 'lucide-react';
 import type { Response as ResponseType } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 
 interface Props {
   responses: ResponseType[];
+  onDeleteResponse?: (id: string) => void;
 }
 
-export function TextSpotlight({ responses }: Props) {
+export function TextSpotlight({ responses, onDeleteResponse }: Props) {
   const [index, setIndex] = useState(0);
 
   if (responses.length === 0) {
@@ -28,6 +29,16 @@ export function TextSpotlight({ responses }: Props) {
     <div className="w-full max-w-3xl mx-auto flex flex-col items-center py-6">
       {/* Spotlight Card */}
       <div className="relative w-full rounded-3xl bg-white border-2 border-slate-200 p-8 sm:p-12 shadow-xl shadow-slate-200/50 text-center transition-all min-h-[260px] flex flex-col items-center justify-center">
+        {onDeleteResponse && (
+          <button
+            onClick={() => onDeleteResponse(current.id)}
+            className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 shadow-xs cursor-pointer transition-colors"
+            title="Supprimer ce message"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
+
         <Quote className="text-teal-500/30 mb-4" size={48} />
 
         <p className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 leading-snug tracking-tight mb-6">

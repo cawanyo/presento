@@ -30,6 +30,7 @@ import {
   X,
   Radio,
   QrCode,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
@@ -49,6 +50,7 @@ import {
 } from '@/lib/types';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { ModerationModal } from '@/components/modals/ModerationModal';
 import { QuestionVisualization } from '@/components/visualizations/QuestionVisualization';
 
 interface Props {
@@ -78,6 +80,9 @@ export function LivePresentation({ presentationId, onBack }: Props) {
 
   const updatePresentationState = useMutation(api.presentations.updateState);
   const updateQuestionMutation = useMutation(api.questions.update);
+  const deleteResponseMutation = useMutation(api.responses.remove);
+  const deleteWordMutation = useMutation(api.responses.removeByWord);
+  const clearResponsesMutation = useMutation(api.responses.clearByQuestion);
 
   const [presentation, setPresentation] = useState<Presentation | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -92,6 +97,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showCornerQR, setShowCornerQR] = useState(true); // Right-side QR switch
+  const [showModerationModal, setShowModerationModal] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -287,6 +293,33 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     });
   };
 
+  // Moderation handlers
+  const handleDeleteResponse = async (id: string) => {
+    try {
+      await deleteResponseMutation({ id: id as any });
+    } catch (err) {
+      console.error('Failed to delete response:', err);
+    }
+  };
+
+  const handleDeleteWord = async (word: string) => {
+    if (!currentQId) return;
+    try {
+      await deleteWordMutation({ question_id: currentQId, word });
+    } catch (err) {
+      console.error('Failed to delete word:', err);
+    }
+  };
+
+  const handleClearAllResponses = async () => {
+    if (!currentQId) return;
+    try {
+      await clearResponsesMutation({ question_id: currentQId });
+    } catch (err) {
+      console.error('Failed to clear responses:', err);
+    }
+  };
+
   // Toggle Fullscreen
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -313,6 +346,8 @@ export function LivePresentation({ presentationId, onBack }: Props) {
         setHideResults((prev) => !prev);
       } else if (e.key.toLowerCase() === 'l') {
         setIsLocked((prev) => !prev);
+      } else if (e.key.toLowerCase() === 'm') {
+        setShowModerationModal((prev) => !prev);
       } else if (e.key.toLowerCase() === 'r') {
         handleRevealQuiz();
       } else if (e.key.toLowerCase() === 'c') {
@@ -715,6 +750,8 @@ export function LivePresentation({ presentationId, onBack }: Props) {
                 activeLayout={activeLayout}
                 revealedQuiz={revealedQuiz}
                 hideResults={hideResults}
+                onDeleteResponse={handleDeleteResponse}
+                onDeleteWord={handleDeleteWord}
               />
             </div>
           </div>
@@ -782,6 +819,24 @@ export function LivePresentation({ presentationId, onBack }: Props) {
               {isLocked ? <Lock size={18} /> : <Unlock size={18} />}
             </button>
 
+            {/* Moderation button */}
+            {currentQuestion?.type !== 'text_slide' && responses.length > 0 && (
+              <button
+                onClick={() => setShowModerationModal(true)}
+                className={`p-2 rounded-xl transition-colors flex items-center gap-1.5 ${
+                  showModerationModal
+                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="Modérer les réponses (M)"
+              >
+                <ShieldCheck size={18} className="text-teal-600" />
+                <span className="text-[10px] font-mono bg-slate-100 border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded-md font-bold">
+                  {responses.length}
+                </span>
+              </button>
+            )}
+
             {/* Corner QR toggle from deck */}
             <button
               onClick={() => setShowCornerQR(!showCornerQR)}
@@ -799,7 +854,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
 
             {/* Discrete Keyboard Hint */}
             <span className="text-[10px] text-slate-400 font-mono hidden md:inline px-1">
-              [Espace: Suivant · H: Masquer · L: Bloquer · C: QR]
+              [Espace: Suivant · H: Masquer · L: Bloquer · M: Modérer · C: QR]
             </span>
           </div>
         )}
@@ -862,6 +917,17 @@ export function LivePresentation({ presentationId, onBack }: Props) {
         confirmText="Quitter la présentation"
         cancelText="Continuer à présenter"
         variant="warning"
+      />
+
+      {/* Live Responses Moderation Modal */}
+      <ModerationModal
+        open={showModerationModal}
+        onClose={() => setShowModerationModal(false)}
+        question={currentQuestion}
+        responses={responses}
+        onDeleteResponse={handleDeleteResponse}
+        onDeleteWord={handleDeleteWord}
+        onClearAll={handleClearAllResponses}
       />
     </div>
   );

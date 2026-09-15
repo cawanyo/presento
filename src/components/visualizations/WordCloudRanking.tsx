@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
-import { Trophy, Medal } from 'lucide-react';
+import { Trophy, Medal, Trash2 } from 'lucide-react';
 import type { Response as ResponseType } from '@/lib/types';
 import { MENTI_COLORS } from '@/lib/types';
 
 interface Props {
   responses: ResponseType[];
+  onDeleteWord?: (word: string) => void;
 }
 
-export function WordCloudRanking({ responses }: Props) {
+export function WordCloudRanking({ responses, onDeleteWord }: Props) {
   const ranking = useMemo(() => {
     const counts: Record<string, number> = {};
     responses.forEach((r) => {
@@ -41,7 +42,7 @@ export function WordCloudRanking({ responses }: Props) {
         return (
           <div
             key={item.word}
-            className={`flex items-center gap-4 rounded-2xl bg-white border-2 p-3.5 transition-all duration-300 shadow-xs ${
+            className={`group flex items-center gap-4 rounded-2xl bg-white border-2 p-3.5 transition-all duration-300 shadow-xs ${
               item.rank === 1
                 ? 'border-amber-400 bg-amber-50/50 shadow-sm shadow-amber-500/10'
                 : item.rank === 2
@@ -83,6 +84,16 @@ export function WordCloudRanking({ responses }: Props) {
                 />
               </div>
             </div>
+
+            {onDeleteWord && (
+              <button
+                onClick={() => onDeleteWord(item.word)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex-shrink-0"
+                title={`Supprimer "${item.word}"`}
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
         );
       })}

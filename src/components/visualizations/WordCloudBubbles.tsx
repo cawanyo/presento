@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import type { Response as ResponseType } from '@/lib/types';
 import { MENTI_COLORS } from '@/lib/types';
 
 interface Props {
   responses: ResponseType[];
+  onDeleteWord?: (word: string) => void;
 }
 
-export function WordCloudBubbles({ responses }: Props) {
+export function WordCloudBubbles({ responses, onDeleteWord }: Props) {
   const wordStats = useMemo(() => {
     const counts: Record<string, number> = {};
     responses.forEach((r) => {
@@ -64,6 +66,19 @@ export function WordCloudBubbles({ responses }: Props) {
             <span className="mt-0.5 bg-black/40 text-white font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-white/20">
               {item.count}
             </span>
+
+            {onDeleteWord && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteWord(item.word);
+                }}
+                className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-white text-rose-600 shadow-md border border-rose-200 hover:bg-rose-50 cursor-pointer"
+                title={`Supprimer "${item.word}"`}
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
           </div>
         ))}
       </div>

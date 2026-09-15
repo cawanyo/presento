@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import type { Response as ResponseType } from '@/lib/types';
 import { MENTI_COLORS } from '@/lib/types';
 
 interface Props {
   responses: ResponseType[];
+  onDeleteWord?: (word: string) => void;
 }
 
-export function WordCloudOrganized({ responses }: Props) {
+export function WordCloudOrganized({ responses, onDeleteWord }: Props) {
   const wordStats = useMemo(() => {
     const counts: Record<string, number> = {};
     responses.forEach((r) => {
@@ -71,10 +73,22 @@ export function WordCloudOrganized({ responses }: Props) {
               {item.word}
             </span>
 
-            {/* Hover tooltip showing count */}
-            <span className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 border border-slate-700 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-lg pointer-events-none whitespace-nowrap z-20">
-              {item.count} mention{item.count > 1 ? 's' : ''}
-            </span>
+            {/* Hover tooltip showing count & delete button */}
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 border border-slate-700 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-lg whitespace-nowrap z-20 flex items-center gap-1.5 pointer-events-auto">
+              <span>{item.count} mention{item.count > 1 ? 's' : ''}</span>
+              {onDeleteWord && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteWord(item.word);
+                  }}
+                  className="hover:text-rose-400 p-0.5 rounded text-rose-500 transition-colors ml-0.5 cursor-pointer"
+                  title={`Supprimer "${item.word}"`}
+                >
+                  <Trash2 size={11} />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

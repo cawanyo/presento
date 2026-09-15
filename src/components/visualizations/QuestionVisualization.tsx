@@ -22,6 +22,8 @@ interface Props {
   activeLayout: ChartLayout;
   revealedQuiz?: boolean;
   hideResults?: boolean;
+  onDeleteResponse?: (id: string) => void;
+  onDeleteWord?: (word: string) => void;
 }
 
 export function QuestionVisualization({
@@ -30,6 +32,8 @@ export function QuestionVisualization({
   activeLayout,
   revealedQuiz = false,
   hideResults = false,
+  onDeleteResponse,
+  onDeleteWord,
 }: Props) {
   const effectiveType = getEffectiveQuestionType(question);
   const { choices, textBlocks } = parseQuestionConfig(question);
@@ -118,12 +122,12 @@ export function QuestionVisualization({
   if (question.type === 'word_cloud') {
     switch (activeLayout) {
       case 'bubbles':
-        return <WordCloudBubbles responses={responses} />;
+        return <WordCloudBubbles responses={responses} onDeleteWord={onDeleteWord} />;
       case 'ranking':
-        return <WordCloudRanking responses={responses} />;
+        return <WordCloudRanking responses={responses} onDeleteWord={onDeleteWord} />;
       case 'word_cloud':
       default:
-        return <WordCloudOrganized responses={responses} />;
+        return <WordCloudOrganized responses={responses} onDeleteWord={onDeleteWord} />;
     }
   }
 
@@ -142,12 +146,12 @@ export function QuestionVisualization({
   if (question.type === 'open_text') {
     switch (activeLayout) {
       case 'spotlight':
-        return <TextSpotlight responses={responses} />;
+        return <TextSpotlight responses={responses} onDeleteResponse={onDeleteResponse} />;
       case 'list':
-        return <TextList responses={responses} />;
+        return <TextList responses={responses} onDeleteResponse={onDeleteResponse} />;
       case 'wall':
       default:
-        return <TextWall responses={responses} />;
+        return <TextWall responses={responses} onDeleteResponse={onDeleteResponse} />;
     }
   }
 

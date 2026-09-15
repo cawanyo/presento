@@ -1,9 +1,10 @@
 import React from 'react';
-import { User } from 'lucide-react';
+import { User, Trash2 } from 'lucide-react';
 import type { Response as ResponseType } from '@/lib/types';
 
 interface Props {
   responses: ResponseType[];
+  onDeleteResponse?: (id: string) => void;
 }
 
 const CARD_TINTS = [
@@ -15,7 +16,7 @@ const CARD_TINTS = [
   'border-indigo-200 bg-indigo-50/70 text-indigo-950',
 ];
 
-export function TextWall({ responses }: Props) {
+export function TextWall({ responses, onDeleteResponse }: Props) {
   if (responses.length === 0) {
     return (
       <div className="text-center py-16">
@@ -33,9 +34,21 @@ export function TextWall({ responses }: Props) {
           return (
             <div
               key={r.id || i}
-              className={`rounded-3xl border-2 p-5 shadow-xs hover:scale-[1.02] hover:shadow-md transition-all duration-300 animate-in fade-in flex flex-col justify-between ${tint}`}
+              className={`group relative rounded-3xl border-2 p-5 shadow-xs hover:scale-[1.02] hover:shadow-md transition-all duration-300 animate-in fade-in flex flex-col justify-between ${tint}`}
             >
-              <p className="text-slate-900 text-base leading-relaxed break-words font-semibold">
+              {onDeleteResponse && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteResponse(r.id);
+                  }}
+                  className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-xl bg-white/95 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 shadow-xs cursor-pointer"
+                  title="Supprimer ce message"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+              <p className="text-slate-900 text-base leading-relaxed break-words font-semibold pr-6">
                 "{r.answer}"
               </p>
               <div className="flex items-center gap-1.5 mt-4 pt-2.5 border-t border-black/5 text-xs text-slate-600 font-medium">

@@ -80,6 +80,19 @@ export function ParticipantView({ joinCode, onExit }: Props) {
 
   const presentationEnded = presentation?.status === 'ended';
 
+  // When presentation transitions back to active from ended, reset states
+  const prevEndedRef = useRef(presentationEnded);
+  useEffect(() => {
+    if (prevEndedRef.current && !presentationEnded) {
+      lastQuestionIdRef.current = null;
+      setSubmitted(false);
+      setAnswer('');
+      setSelectedOptions([]);
+      setRating(0);
+    }
+    prevEndedRef.current = presentationEnded;
+  }, [presentationEnded]);
+
   // When question changes, reset input states
   useEffect(() => {
     const activeQId = currentQuestion?.id ?? currentQuestionId;

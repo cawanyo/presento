@@ -139,6 +139,11 @@ export function LivePresentation({ presentationId, onBack }: Props) {
           current_question_id: activeQ.id,
         }).catch((err) => console.error('Failed to auto-sync initial question state:', err));
       }
+    } else if (rawPres && rawPres.status !== 'active') {
+      updatePresentationState({
+        id: presentationId as any,
+        status: 'active',
+      }).catch((err) => console.error('Failed to set status to active:', err));
     }
   }, [rawQs, rawPres, currentIdx, presentationId, updatePresentationState]);
 

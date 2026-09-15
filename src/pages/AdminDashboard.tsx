@@ -62,7 +62,23 @@ export function AdminDashboard({ onOpenPresentation, onPresent }: AdminDashboard
   const loading = rawPresentations === undefined;
 
   const createPresentation = useMutation(api.presentations.create);
+  const updateStateMutation = useMutation(api.presentations.updateState);
   const deletePresentation = useMutation(api.presentations.remove);
+
+  const handlePresent = async (id: string) => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    try {
+      await updateStateMutation({
+        id: id as any,
+        status: 'active',
+      });
+    } catch (err) {
+      console.error('Failed to reactivate presentation:', err);
+    }
+    onPresent?.(id);
+  };
 
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -330,12 +346,7 @@ export function AdminDashboard({ onOpenPresentation, onPresent }: AdminDashboard
                     {onPresent && (
                       <Button
                         size="sm"
-                        onClick={() => {
-                          if (!document.fullscreenElement) {
-                            document.documentElement.requestFullscreen().catch(() => {});
-                          }
-                          onPresent(pres.id);
-                        }}
+                        onClick={() => handlePresent(pres.id)}
                         className="bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs py-2 shadow-xs transition-colors flex items-center gap-1.5"
                         title="Lancer en plein écran"
                       >

@@ -97,6 +97,9 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const hasInitializedRef = useRef(false);
+  const isEndingRef = useRef(false);
+
   const joinUrl = `${window.location.origin}/#/join/${presentation?.join_code ?? ''}`;
 
   // Sync presentation
@@ -106,8 +109,10 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     }
   }, [rawPres]);
 
-  // Sync questions and current question index, ensuring presentation is active and current_question_id is persisted
+  // Sync questions and current question index, ensuring presentation is active and current_question_id is persisted on initial load
   useEffect(() => {
+    if (isEndingRef.current) return;
+
     if (rawQs && rawQs.length > 0) {
       const normalizedQs = rawQs.map((q) => ({
         ...q,
@@ -127,19 +132,22 @@ export function LivePresentation({ presentationId, onBack }: Props) {
         setActiveLayout(cfg.layout);
       }
 
-      const activeQ = normalizedQs[targetIdx] || normalizedQs[0];
-      if (
-        activeQ &&
-        rawPres &&
-        (rawPres.current_question_id !== activeQ.id || rawPres.status !== 'active')
-      ) {
-        updatePresentationState({
-          id: presentationId as any,
-          status: 'active',
-          current_question_id: activeQ.id,
-        }).catch((err) => console.error('Failed to auto-sync initial question state:', err));
+      if (!hasInitializedRef.current && rawPres) {
+        hasInitializedRef.current = true;
+        const activeQ = normalizedQs[targetIdx] || normalizedQs[0];
+        if (
+          activeQ &&
+          (rawPres.current_question_id !== activeQ.id || rawPres.status !== 'active')
+        ) {
+          updatePresentationState({
+            id: presentationId as any,
+            status: 'active',
+            current_question_id: activeQ.id,
+          }).catch((err) => console.error('Failed to auto-sync initial question state:', err));
+        }
       }
-    } else if (rawPres && rawPres.status !== 'active') {
+    } else if (!hasInitializedRef.current && rawPres && rawPres.status !== 'active') {
+      hasInitializedRef.current = true;
       updatePresentationState({
         id: presentationId as any,
         status: 'active',
@@ -213,7 +221,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
 
   // Update current question
   const updateCurrentQuestion = async (idx: number) => {
-    if (!presentation) return;
+    if (!presentation || isEndingRef.current) return;
     const questionId = idx >= 0 && idx < questions.length ? questions[idx].id : null;
     const status = idx >= 0 ? 'active' : presentation.status === 'ended' ? 'ended' : 'draft';
 
@@ -323,6 +331,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
   };
 
   const handleConfirmEnd = async () => {
+    isEndingRef.current = true;
     if (document.fullscreenElement) {
       try {
         await document.exitFullscreen();

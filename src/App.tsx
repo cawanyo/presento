@@ -93,6 +93,7 @@ function AppContent() {
       return (
         <AdminDashboard
           onOpenPresentation={(id) => navigate({ name: 'admin', view: { name: 'editor', id } })}
+          onPresent={(id) => navigate({ name: 'admin', view: { name: 'live', id } })}
         />
       );
     }

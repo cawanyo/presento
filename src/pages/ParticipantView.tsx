@@ -37,13 +37,32 @@ export function ParticipantView({ joinCode, onExit }: Props) {
     currentQuestionId ? { id: currentQuestionId } : 'skip'
   );
 
+  const presentationId = presentation?.id;
+  const presentationQuestions = useQuery(
+    api.questions.listByPresentation,
+    presentationId ? { presentation_id: presentationId } : 'skip'
+  );
+
   const currentQuestion = useMemo(() => {
-    if (!questionData) return null;
+    let rawQ = questionData;
+    if (!rawQ && presentationQuestions && presentationQuestions.length > 0) {
+      if (currentQuestionId) {
+        rawQ =
+          presentationQuestions.find(
+            (q) => q.id === currentQuestionId || (q as any)._id === currentQuestionId
+          ) ?? null;
+      }
+      // If presentation is active and current_question_id is not yet set or single question
+      if (!rawQ && presentation?.status === 'active') {
+        rawQ = presentationQuestions[0];
+      }
+    }
+    if (!rawQ) return null;
     return {
-      ...questionData,
-      type: getEffectiveQuestionType(questionData as any),
+      ...rawQ,
+      type: getEffectiveQuestionType(rawQ as any),
     } as unknown as Question;
-  }, [questionData]);
+  }, [questionData, presentationQuestions, currentQuestionId, presentation?.status]);
 
   const joinMutation = useMutation(api.participants.join);
   const submitResponsesMutation = useMutation(api.responses.submit);
@@ -63,14 +82,15 @@ export function ParticipantView({ joinCode, onExit }: Props) {
 
   // When question changes, reset input states
   useEffect(() => {
-    if (currentQuestionId !== lastQuestionIdRef.current) {
-      lastQuestionIdRef.current = currentQuestionId ?? null;
+    const activeQId = currentQuestion?.id ?? currentQuestionId;
+    if (activeQId !== lastQuestionIdRef.current) {
+      lastQuestionIdRef.current = activeQId ?? null;
       setSubmitted(false);
       setAnswer('');
       setSelectedOptions([]);
       setRating(0);
     }
-  }, [currentQuestionId]);
+  }, [currentQuestion?.id, currentQuestionId]);
 
   const handleJoin = async () => {
     if (!presentation) return;

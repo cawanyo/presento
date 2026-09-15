@@ -205,10 +205,26 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
   const rawQs = useQuery(api.questions.listByPresentation, { presentation_id: presentationId });
 
   const updateTitleMutation = useMutation(api.presentations.updateTitle);
+  const updateStateMutation = useMutation(api.presentations.updateState);
   const createQuestionMutation = useMutation(api.questions.create);
   const updateQuestionMutation = useMutation(api.questions.update);
   const updatePositionsMutation = useMutation(api.questions.updatePositions);
   const deleteQuestionMutation = useMutation(api.questions.remove);
+
+  const handleStartPresent = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    if (questions.length > 0) {
+      const activeQ = questions[activeIdx] || questions[0];
+      updateStateMutation({
+        id: presentationId as any,
+        status: 'active',
+        current_question_id: activeQ.id,
+      }).catch((err) => console.error('Failed to set initial presentation state:', err));
+    }
+    onPresent(presentationId);
+  };
 
   useEffect(() => {
     if (rawPres) {
@@ -512,7 +528,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
 
           {/* Big Present Button */}
           <Button
-            onClick={() => onPresent(presentationId)}
+            onClick={handleStartPresent}
             disabled={questions.length === 0}
             className="bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-600/20 text-xs sm:text-sm font-bold px-4 py-2"
           >
@@ -1469,7 +1485,7 @@ export function PresentationEditor({ presentationId, onBack, onPresent }: Props)
             </span>
             <Button
               size="sm"
-              onClick={() => onPresent(presentationId)}
+              onClick={handleStartPresent}
               disabled={questions.length === 0}
               className="bg-teal-600 hover:bg-teal-500 text-white font-bold shadow-sm"
             >

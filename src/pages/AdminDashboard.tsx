@@ -50,7 +50,12 @@ const statusConfig: Record<string, { label: string; badgeClass: string; dotClass
   },
 };
 
-export function AdminDashboard({ onOpenPresentation }: { onOpenPresentation: (id: string) => void }) {
+interface AdminDashboardProps {
+  onOpenPresentation: (id: string) => void;
+  onPresent?: (id: string) => void;
+}
+
+export function AdminDashboard({ onOpenPresentation, onPresent }: AdminDashboardProps) {
   const { signOut } = useAuth();
   const rawPresentations = useQuery(api.presentations.list);
   const presentations = useMemo(() => (rawPresentations ?? []) as PresentationType[], [rawPresentations]);
@@ -322,12 +327,29 @@ export function AdminDashboard({ onOpenPresentation }: { onOpenPresentation: (id
 
                   {/* Card bottom actions */}
                   <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                    {onPresent && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (!document.fullscreenElement) {
+                            document.documentElement.requestFullscreen().catch(() => {});
+                          }
+                          onPresent(pres.id);
+                        }}
+                        className="bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs py-2 shadow-xs transition-colors flex items-center gap-1.5"
+                        title="Lancer en plein écran"
+                      >
+                        <Play size={13} className="fill-current" /> Présenter
+                      </Button>
+                    )}
+
                     <Button
                       size="sm"
+                      variant="outline"
                       onClick={() => onOpenPresentation(pres.id)}
-                      className="flex-1 bg-slate-900 hover:bg-teal-600 text-white font-bold text-xs py-2 shadow-xs transition-colors"
+                      className="flex-1 text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50 font-bold text-xs py-2 shadow-xs transition-colors"
                     >
-                      <Edit3 size={13} /> Éditer la présentation
+                      <Edit3 size={13} /> Éditer
                     </Button>
 
                     <button

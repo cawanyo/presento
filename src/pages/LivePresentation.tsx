@@ -106,7 +106,7 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     }
   }, [rawPres]);
 
-  // Sync questions and current question index
+  // Sync questions and current question index, ensuring presentation is active and current_question_id is persisted
   useEffect(() => {
     if (rawQs && rawQs.length > 0) {
       const normalizedQs = rawQs.map((q) => ({
@@ -115,21 +115,32 @@ export function LivePresentation({ presentationId, onBack }: Props) {
       })) as unknown as Question[];
       setQuestions(normalizedQs);
 
-      if (currentIdx === -1 && rawPres) {
-        if (rawPres.current_question_id) {
-          const ci = normalizedQs.findIndex((q) => q.id === rawPres.current_question_id);
-          const initialIndex = ci >= 0 ? ci : 0;
-          setCurrentIdx(initialIndex);
-          const cfg = parseQuestionConfig(normalizedQs[initialIndex]);
-          setActiveLayout(cfg.layout);
-        } else {
-          setCurrentIdx(0);
-          const cfg = parseQuestionConfig(normalizedQs[0]);
-          setActiveLayout(cfg.layout);
-        }
+      let targetIdx = 0;
+      if (rawPres?.current_question_id) {
+        const ci = normalizedQs.findIndex((q) => q.id === rawPres.current_question_id);
+        if (ci >= 0) targetIdx = ci;
+      }
+
+      if (currentIdx === -1) {
+        setCurrentIdx(targetIdx);
+        const cfg = parseQuestionConfig(normalizedQs[targetIdx]);
+        setActiveLayout(cfg.layout);
+      }
+
+      const activeQ = normalizedQs[targetIdx] || normalizedQs[0];
+      if (
+        activeQ &&
+        rawPres &&
+        (rawPres.current_question_id !== activeQ.id || rawPres.status !== 'active')
+      ) {
+        updatePresentationState({
+          id: presentationId as any,
+          status: 'active',
+          current_question_id: activeQ.id,
+        }).catch((err) => console.error('Failed to auto-sync initial question state:', err));
       }
     }
-  }, [rawQs, rawPres, currentIdx]);
+  }, [rawQs, rawPres, currentIdx, presentationId, updatePresentationState]);
 
   // Handle browser back button (comeback) & page unload
   useEffect(() => {
@@ -156,13 +167,22 @@ export function LivePresentation({ presentationId, onBack }: Props) {
     };
   }, []);
 
-  // Track fullscreen state change
+  // Track fullscreen state change and auto enter fullscreen on mount
   useEffect(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+
     const handleFsChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
     };
     document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
   }, []);
 
   const handleConfirmExit = async () => {

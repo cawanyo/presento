@@ -37,9 +37,15 @@ export const submit = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id("responses") },
+  args: { id: v.union(v.id("responses"), v.string()) },
   handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
+    const normalizedId = ctx.db.normalizeId("responses", args.id);
+    if (normalizedId) {
+      const doc = await ctx.db.get(normalizedId);
+      if (doc) {
+        await ctx.db.delete(normalizedId);
+      }
+    }
   },
 });
 

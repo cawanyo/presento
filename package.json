@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "convex:dev": "convex dev",
+    "simulate": "node scripts/simulate.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

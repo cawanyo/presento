@@ -525,11 +525,11 @@ export function LivePresentation({ presentationId, onBack }: Props) {
 
       {/* ── Main Presentation Stage ───────────────────────────────── */}
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 relative">
-        {/* ── Right-Side Corner QR Code with Switch ────────────────── */}
-        <div className="absolute top-4 right-4 z-20 hidden md:block">
+        {/* ── Right-Side Corner QR Code with Switch & Layout Options ── */}
+        <div className="absolute top-4 right-4 z-20 hidden md:flex flex-col items-end gap-2.5 w-40">
           {showCornerQR ? (
             <div
-              className={`rounded-2xl p-3 border shadow-lg flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 transition-all ${
+              className={`rounded-2xl p-3 border shadow-lg flex flex-col items-center gap-2 animate-in fade-in zoom-in-95 transition-all w-full ${
                 isWhiteTheme
                   ? 'bg-white/95 border-slate-200 text-slate-800 shadow-slate-200/60'
                   : 'bg-slate-900/95 border-slate-700 text-white'
@@ -587,6 +587,44 @@ export function LivePresentation({ presentationId, onBack }: Props) {
               </div>
             </button>
           )}
+
+          {/* ── Layout Options (Centré, Éditorial, Cartes, etc.) below QR Code ── */}
+          {currentQuestion && availableLayouts.length > 1 && (
+            <div
+              className={`rounded-2xl p-2.5 border shadow-lg flex flex-col gap-1.5 transition-all w-full ${
+                isWhiteTheme
+                  ? 'bg-white/95 border-slate-200 text-slate-800 shadow-slate-200/60'
+                  : 'bg-slate-900/95 border-slate-700 text-white'
+              }`}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                Disposition
+              </span>
+              <div className="flex flex-col gap-1">
+                {availableLayouts.map((lo) => {
+                  const Icon = LAYOUT_ICONS[lo.icon] || BarChart3;
+                  const isSelected = activeLayout === lo.id;
+                  return (
+                    <button
+                      key={lo.id}
+                      onClick={() => handleSelectLayout(lo.id)}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all w-full text-left ${
+                        isSelected
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : isWhiteTheme
+                          ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      }`}
+                      title={`Afficher en : ${lo.label}`}
+                    >
+                      <Icon size={14} className={isSelected ? 'text-white' : 'text-slate-400'} />
+                      <span className="truncate">{lo.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {currentIdx < 0 ? (
@@ -628,24 +666,20 @@ export function LivePresentation({ presentationId, onBack }: Props) {
           <div className="w-full max-w-5xl flex flex-col items-center">
             {/* Question Header & Type badge */}
             <div className="mb-6 text-center max-w-3xl">
-              <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200/80 px-3.5 py-1 rounded-full text-xs font-bold text-teal-800 mb-3 shadow-xs">
-                <span>{currentQuestion.type === 'text_slide' ? 'Slide' : 'Question'} {currentIdx + 1} sur {questions.length}</span>
-                {currentQuestion.type === 'quiz' && (
-                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
-                    Quiz
-                  </span>
-                )}
-                {currentQuestion.type === 'text_slide' && (
-                  <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
-                    Contenu
-                  </span>
-                )}
-                {parseQuestionConfig(currentQuestion).allowMultiple && (
-                  <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
-                    {currentQuestion.type === 'multiple_choice' ? 'Choix multiples' : 'Réponses multiples'}
-                  </span>
-                )}
-              </div>
+              {(currentQuestion.type === 'quiz' || parseQuestionConfig(currentQuestion).allowMultiple) && (
+                <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200/80 px-3.5 py-1 rounded-full text-xs font-bold text-teal-800 mb-3 shadow-xs">
+                  {currentQuestion.type === 'quiz' && (
+                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                      Quiz
+                    </span>
+                  )}
+                  {parseQuestionConfig(currentQuestion).allowMultiple && (
+                    <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                      {currentQuestion.type === 'multiple_choice' ? 'Choix multiples' : 'Réponses multiples'}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {currentQuestion.type !== 'text_slide' && (
                 <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
@@ -653,39 +687,6 @@ export function LivePresentation({ presentationId, onBack }: Props) {
                 </h2>
               )}
             </div>
-
-            {/* Quick Switch Layout Toolbar (Menti Style) */}
-            {availableLayouts.length > 1 && (
-              <div
-                className={`mb-6 flex items-center gap-1.5 p-1 rounded-2xl border shadow-xs ${
-                  isWhiteTheme
-                    ? 'bg-slate-100 border-slate-200'
-                    : 'bg-slate-900/70 border-slate-800'
-                }`}
-              >
-                {availableLayouts.map((lo) => {
-                  const Icon = LAYOUT_ICONS[lo.icon] || BarChart3;
-                  const isSelected = activeLayout === lo.id;
-                  return (
-                    <button
-                      key={lo.id}
-                      onClick={() => handleSelectLayout(lo.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                        isSelected
-                          ? 'bg-teal-600 text-white shadow-sm'
-                          : isWhiteTheme
-                          ? 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                      }`}
-                      title={`Afficher en : ${lo.label}`}
-                    >
-                      <Icon size={14} />
-                      <span className="hidden sm:inline">{lo.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
 
             {/* Quiz Action: Reveal correct answer */}
             {currentQuestion.type === 'quiz' && currentQuestion.correct_option !== null && (
